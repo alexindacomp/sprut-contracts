@@ -1,0 +1,7 @@
+{
+  "name": "reject-fraction",
+  "description": "Numbers with a fraction are not allowed in hashed structures.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1.5}",
+  "expected_error": "NON_INTEGER_NUMBER"
+}

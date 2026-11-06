@@ -1,0 +1,22 @@
+{
+  "name": "arrays-keep-order",
+  "description": "Array element order is preserved; only object members are sorted.",
+  "operation": "canonicalize",
+  "input": [
+    3,
+    1,
+    2,
+    "b",
+    "a",
+    [
+      2,
+      1
+    ],
+    {
+      "b": 1,
+      "a": 2
+    }
+  ],
+  "canonical": "[3,1,2,\"b\",\"a\",[2,1],{\"a\":2,\"b\":1}]",
+  "sha256": "047d93fdecdc2f54d39ed35e8f69864c8335575ea07e669bbfaa9fcbd38519b1"
+}

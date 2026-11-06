@@ -1,0 +1,755 @@
+{
+  "schema_version": 1,
+  "reason_codes": [
+    {
+      "code": "UNSUPPORTED_PROFILE",
+      "description": {
+        "ru": "Операционная система, архитектура или движок не входят в поддерживаемый профиль.",
+        "en": "The operating system, architecture or engine is not in a supported profile."
+      },
+      "next_action": {
+        "ru": "Используйте поддерживаемую платформу: Windows x86-64 для Sprut Desktop или Ubuntu LTS x86-64 для sprut CLI.",
+        "en": "Use a supported platform: Windows x86-64 for Sprut Desktop or Ubuntu LTS x86-64 for the sprut CLI."
+      },
+      "retryable": false,
+      "cli_exit_code": 7,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.3", "CF10", "CW01"]
+    },
+    {
+      "code": "ENGINE_CLI_MISSING",
+      "description": {
+        "ru": "Docker CLI не найден.",
+        "en": "The Docker CLI was not found."
+      },
+      "next_action": {
+        "ru": "Запустите подготовку окружения: план предложит установку Docker Engine из официального источника.",
+        "en": "Run environment setup: the plan will offer to install Docker Engine from the official source."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10"]
+    },
+    {
+      "code": "ENGINE_DAEMON_STOPPED",
+      "description": {
+        "ru": "Docker daemon не запущен.",
+        "en": "The Docker daemon is not running."
+      },
+      "next_action": {
+        "ru": "Запустите Docker Engine или повторите подготовку окружения, чтобы клиент проверил его заново.",
+        "en": "Start Docker Engine or run environment setup again so that the client re-checks it."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10"]
+    },
+    {
+      "code": "ENGINE_PERMISSION_DENIED",
+      "description": {
+        "ru": "Нет прав доступа к Docker Engine.",
+        "en": "Access to Docker Engine is denied."
+      },
+      "next_action": {
+        "ru": "Выберите способ доступа в плане подготовки (членство в группе docker равносильно правам root) и после изменения войдите в сессию заново.",
+        "en": "Choose an access option in the setup plan (membership in the docker group is equivalent to root) and log in again after the change."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10", "SPRUT-CLIENT-SPECIFICATION 7.4 item 3", "TC29"]
+    },
+    {
+      "code": "ENGINE_REMOTE_CONTEXT",
+      "description": {
+        "ru": "Docker endpoint не локальный (удалённый context); Sprut его не использует.",
+        "en": "The Docker endpoint is not local (remote context); Sprut does not use it."
+      },
+      "next_action": {
+        "ru": "Используйте локальный Docker Engine. Sprut не переключает глобальный Docker context за вас.",
+        "en": "Use a local Docker Engine. Sprut does not switch the global Docker context for you."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF11"]
+    },
+    {
+      "code": "ENGINE_WRONG_MODE",
+      "description": {
+        "ru": "Docker Engine работает не в режиме Linux-контейнеров.",
+        "en": "Docker Engine is not running in Linux-container mode."
+      },
+      "next_action": {
+        "ru": "Используйте Docker Engine в режиме Linux-контейнеров и повторите проверку.",
+        "en": "Use Docker Engine in Linux-container mode and run the check again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10", "CF16"]
+    },
+    {
+      "code": "VIRTUALIZATION_DISABLED",
+      "description": {
+        "ru": "Аппаратная виртуализация отключена.",
+        "en": "Hardware virtualization is disabled."
+      },
+      "next_action": {
+        "ru": "Включите виртуализацию (Intel VT-x или AMD-V) в настройках BIOS/UEFI и повторите проверку.",
+        "en": "Enable virtualization (Intel VT-x or AMD-V) in the BIOS/UEFI settings and run the check again."
+      },
+      "retryable": false,
+      "cli_exit_code": 3,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10", "CW01", "TC44"]
+    },
+    {
+      "code": "WSL_MISSING",
+      "description": {
+        "ru": "WSL не установлен.",
+        "en": "WSL is not installed."
+      },
+      "next_action": {
+        "ru": "Согласуйте план подготовки: он установит WSL2 официальным способом (нужны права администратора и, возможно, перезагрузка).",
+        "en": "Approve the setup plan: it installs WSL2 the official way (administrator rights and possibly a reboot are needed)."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CW01", "CW03", "TC43"]
+    },
+    {
+      "code": "WSL_OUTDATED",
+      "description": {
+        "ru": "Установлен только WSL1 или устаревший компонент WSL.",
+        "en": "Only WSL1 or an outdated WSL component is installed."
+      },
+      "next_action": {
+        "ru": "Согласуйте шаг обновления WSL в плане подготовки.",
+        "en": "Approve the WSL update step in the setup plan."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CW01", "CW03", "TC44"]
+    },
+    {
+      "code": "WSL_POLICY_BLOCKED",
+      "description": {
+        "ru": "Использование WSL запрещено политикой организации.",
+        "en": "WSL is blocked by an organization policy."
+      },
+      "next_action": {
+        "ru": "Обратитесь к администратору, чтобы разрешить WSL2 на этом компьютере, затем повторите проверку.",
+        "en": "Ask your administrator to allow WSL2 on this computer, then run the check again."
+      },
+      "retryable": false,
+      "cli_exit_code": 3,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 6.3", "TC44"]
+    },
+    {
+      "code": "WSL_DISTRO_BROKEN",
+      "description": {
+        "ru": "WSL-дистрибутив Sprut повреждён или не той версии.",
+        "en": "The Sprut WSL distribution is damaged or has the wrong version."
+      },
+      "next_action": {
+        "ru": "Согласуйте пересоздание дистрибутива Sprut; план покажет, какие данные будут потеряны.",
+        "en": "Approve re-creating the Sprut distribution; the plan shows which data will be lost."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10", "CW04"]
+    },
+    {
+      "code": "WSL_RESTART_REQUIRED",
+      "description": {
+        "ru": "Новые настройки WSL вступят в силу после перезапуска WSL.",
+        "en": "New WSL settings take effect after WSL is restarted."
+      },
+      "next_action": {
+        "ru": "Подтвердите перезапуск WSL. Он остановит все дистрибутивы WSL; при активных задачах Sprut сначала выполнит drain.",
+        "en": "Confirm the WSL restart. It stops all WSL distributions; with active tasks Sprut drains them first."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CR04"]
+    },
+    {
+      "code": "WSL_CONFIG_CONFLICT",
+      "description": {
+        "ru": "В .wslconfig уже есть значения, заданные не Sprut.",
+        "en": ".wslconfig already contains values not set by Sprut."
+      },
+      "next_action": {
+        "ru": "Проверьте показанные значения и подтвердите их замену либо оставьте текущие.",
+        "en": "Review the values shown and confirm replacing them, or keep the current ones."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CR03"]
+    },
+    {
+      "code": "WSL_RESOURCES_INSUFFICIENT",
+      "description": {
+        "ru": "Ресурсов WSL VM недостаточно для заданных лимитов.",
+        "en": "The WSL VM resources are insufficient for the configured limits."
+      },
+      "next_action": {
+        "ru": "Увеличьте память или число процессоров WSL в настройках Sprut либо уменьшите лимиты задач.",
+        "en": "Increase WSL memory or processors in Sprut settings, or lower the task limits."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CR05", "CR06"]
+    },
+    {
+      "code": "INSUFFICIENT_DISK",
+      "description": {
+        "ru": "Недостаточно места на диске.",
+        "en": "Not enough disk space."
+      },
+      "next_action": {
+        "ru": "Освободите место (нужный объём указан в плане) или выберите другой каталог данных.",
+        "en": "Free up space (the plan shows how much is needed) or choose another data directory."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF10", "CF12"]
+    },
+    {
+      "code": "SOURCE_UNAVAILABLE",
+      "description": {
+        "ru": "Официальный источник установщика, пакета или образа недоступен.",
+        "en": "The official source of the installer, package or image is unavailable."
+      },
+      "next_action": {
+        "ru": "Проверьте подключение к сети и повторите.",
+        "en": "Check the network connection and try again."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF12"]
+    },
+    {
+      "code": "INTEGRITY_MISMATCH",
+      "description": {
+        "ru": "Хеш или подпись загруженного артефакта не совпадает с ожидаемым; артефакт не используется.",
+        "en": "The hash or signature of a downloaded artifact does not match; the artifact is not used."
+      },
+      "next_action": {
+        "ru": "Повторите загрузку. Если ошибка повторяется, источник может быть повреждён или подменён — сообщите о проблеме.",
+        "en": "Retry the download. If it fails again, the source may be corrupted or tampered with; report the problem."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF12", "CW04"]
+    },
+    {
+      "code": "CONSENT_REQUIRED",
+      "description": {
+        "ru": "Действие требует явного согласия пользователя.",
+        "en": "The action requires the user's explicit consent."
+      },
+      "next_action": {
+        "ru": "Просмотрите план и подтвердите именно его: в Sprut Desktop кнопкой «Продолжить», в CLI интерактивно в терминале или командой sprut setup apply --plan-id <plan_id показанного плана> --yes (--yes без --plan-id не действует).",
+        "en": "Review the plan and approve exactly that plan: in Sprut Desktop with Continue, in the CLI interactively in a terminal or with sprut setup apply --plan-id <plan_id of the plan shown> --yes (--yes without --plan-id is not accepted)."
+      },
+      "retryable": false,
+      "cli_exit_code": 4,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.1 item 5", "CF13", "TC27"]
+    },
+    {
+      "code": "PRIVILEGE_REQUIRED",
+      "description": {
+        "ru": "Шагу плана нужны права администратора (UAC или sudo).",
+        "en": "A plan step needs administrator rights (UAC or sudo)."
+      },
+      "next_action": {
+        "ru": "Подтвердите запрос прав для этого шага; для CLI запустите команду в терминале, где возможен ввод sudo.",
+        "en": "Approve the privilege request for this step; for the CLI run the command in a terminal where sudo can prompt."
+      },
+      "retryable": false,
+      "cli_exit_code": 4,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.3", "TC31"]
+    },
+    {
+      "code": "REBOOT_REQUIRED",
+      "description": {
+        "ru": "Для продолжения нужна перезагрузка компьютера. Sprut не перезагружает компьютер сам.",
+        "en": "A computer reboot is needed to continue. Sprut never reboots the computer by itself."
+      },
+      "next_action": {
+        "ru": "Перезагрузите компьютер, когда удобно; после этого подготовка продолжится с перепроверкой состояния.",
+        "en": "Reboot when convenient; setup then continues after re-checking the system."
+      },
+      "retryable": false,
+      "cli_exit_code": 5,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.3", "CF15", "TC17"]
+    },
+    {
+      "code": "RELOGIN_REQUIRED",
+      "description": {
+        "ru": "Изменения прав вступят в силу после повторного входа в сессию.",
+        "en": "Permission changes take effect after logging in again."
+      },
+      "next_action": {
+        "ru": "Выйдите из сессии и войдите снова (или переподключитесь по SSH), затем продолжите подготовку (sprut setup resume).",
+        "en": "Log out and log in again (or reconnect over SSH), then continue setup (sprut setup resume)."
+      },
+      "retryable": false,
+      "cli_exit_code": 5,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.4 item 3", "TC29"]
+    },
+    {
+      "code": "PLAN_STALE",
+      "description": {
+        "ru": "Фактическое состояние изменилось после построения плана; согласие к нему больше не применимо.",
+        "en": "The actual state changed after the plan was built; the consent no longer applies."
+      },
+      "next_action": {
+        "ru": "Постройте новый план и согласуйте его заново.",
+        "en": "Build a new plan and approve it again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.2", "CF13", "TC28"]
+    },
+    {
+      "code": "IMAGE_NOT_ALLOWED",
+      "description": {
+        "ru": "Образ не входит в allowlist или не задан неизменяемым digest.",
+        "en": "The image is not in the allowlist or is not pinned by an immutable digest."
+      },
+      "next_action": {
+        "ru": "Используйте образ из встроенного allowlist; для нового образа обновите клиент.",
+        "en": "Use an image from the built-in allowlist; update the client to get a new image."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF20"]
+    },
+    {
+      "code": "MANIFEST_POLICY_VIOLATION",
+      "description": {
+        "ru": "Manifest задачи нарушает политику: произвольный образ, Dockerfile, mount, socket, privileged, shell или URL.",
+        "en": "The task manifest violates the policy: arbitrary image, Dockerfile, mount, socket, privileged, shell or URL."
+      },
+      "next_action": {
+        "ru": "Исправьте manifest: допускаются только разрешённые entrypoints одобренных образов.",
+        "en": "Fix the manifest: only allowed entrypoints of approved images are permitted."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF21"]
+    },
+    {
+      "code": "SMOKE_TEST_FAILED",
+      "description": {
+        "ru": "Диагностический контейнер не прошёл проверку (вычисления, запись и чтение состояния, logs, stop).",
+        "en": "The diagnostic container failed its check (compute, state write/read, logs, stop)."
+      },
+      "next_action": {
+        "ru": "Экспортируйте диагностику, проверьте Docker Engine и повторите подготовку.",
+        "en": "Export diagnostics, check Docker Engine and run setup again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF16"]
+    },
+    {
+      "code": "CUDA_UNAVAILABLE",
+      "description": {
+        "ru": "CUDA непригодна: реальный шаг вычислений на GPU внутри контейнера не прошёл.",
+        "en": "CUDA is not usable: a real compute step on the GPU inside the container failed."
+      },
+      "next_action": {
+        "ru": "Проверьте драйвер NVIDIA и NVIDIA Container Toolkit. Политика auto может использовать CPU.",
+        "en": "Check the NVIDIA driver and the NVIDIA Container Toolkit. The auto policy can use the CPU."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF31", "CF32"]
+    },
+    {
+      "code": "DEVICE_UNAVAILABLE",
+      "description": {
+        "ru": "Запрошенное устройство недоступно; переход на другое устройство не выполняется.",
+        "en": "The requested device is unavailable; there is no fallback to another device."
+      },
+      "next_action": {
+        "ru": "Выберите политику устройства auto или cpu либо устраните причину недоступности устройства.",
+        "en": "Choose the auto or cpu device policy, or fix the reason the device is unavailable."
+      },
+      "retryable": false,
+      "cli_exit_code": 6,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 7.3", "CF32"]
+    },
+    {
+      "code": "MEMORY_BUDGET",
+      "description": {
+        "ru": "Потребность в памяти превышает бюджет с учётом запаса 20%.",
+        "en": "The memory requirement exceeds the budget including the 20% reserve."
+      },
+      "next_action": {
+        "ru": "Уменьшите context, выберите другое устройство, квантованную или меньшую модель либо увеличьте лимиты.",
+        "en": "Use a smaller context, another device, a quantized or smaller model, or raise the limits."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "03-CONTRACTS 7", "CF58", "TC38", "TC47"]
+    },
+    {
+      "code": "MODEL_INTEGRITY_FAILED",
+      "description": {
+        "ru": "Веса, tokenizer или chat template модели повреждены: hash не совпадает.",
+        "en": "The model weights, tokenizer or chat template are damaged: the hash does not match."
+      },
+      "next_action": {
+        "ru": "Удалите модель и добавьте её заново.",
+        "en": "Remove the model and add it again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF51", "CF54"]
+    },
+    {
+      "code": "MODEL_IN_USE",
+      "description": {
+        "ru": "Модель используется (загружена в память или нужна задаче) и не может быть удалена.",
+        "en": "The model is in use (loaded or needed by a task) and cannot be removed."
+      },
+      "next_action": {
+        "ru": "Выгрузите модель или дождитесь завершения задач, затем повторите.",
+        "en": "Unload the model or wait for the tasks to finish, then try again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF52"]
+    },
+    {
+      "code": "MODEL_FORMAT_UNSUPPORTED",
+      "description": {
+        "ru": "Формат модели не поддерживается; pickle-форматы (.bin, .pt, .pth, .ckpt) не принимаются.",
+        "en": "The model format is not supported; pickle formats (.bin, .pt, .pth, .ckpt) are not accepted."
+      },
+      "next_action": {
+        "ru": "Используйте веса safetensors с config и tokenizer или одиночный файл GGUF.",
+        "en": "Use safetensors weights with config and tokenizer, or a single GGUF file."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF56", "TC37"]
+    },
+    {
+      "code": "MODEL_ARCH_UNSUPPORTED",
+      "description": {
+        "ru": "Архитектура модели не поддерживается локальным backend.",
+        "en": "The model architecture is not supported by the local backend."
+      },
+      "next_action": {
+        "ru": "Выберите модель поддерживаемой архитектуры.",
+        "en": "Choose a model with a supported architecture."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF57", "TC37"]
+    },
+    {
+      "code": "MODEL_REMOTE_CODE_REQUIRED",
+      "description": {
+        "ru": "Модель требует исполнения стороннего кода (trust_remote_code); такие модели отклоняются.",
+        "en": "The model requires executing third-party code (trust_remote_code); such models are rejected."
+      },
+      "next_action": {
+        "ru": "Выберите модель, которой не нужен сторонний код.",
+        "en": "Choose a model that does not need third-party code."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF56", "TC37"]
+    },
+    {
+      "code": "MODEL_TEMPLATE_MISSING",
+      "description": {
+        "ru": "У модели нет chat template.",
+        "en": "The model has no chat template."
+      },
+      "next_action": {
+        "ru": "Выберите встроенный шаблон или используйте модель только в режиме generate.",
+        "en": "Choose a built-in template or use the model in generate mode only."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF57", "TC37"]
+    },
+    {
+      "code": "MODEL_SOURCE_AUTH_REQUIRED",
+      "description": {
+        "ru": "Репозиторий модели закрыт и требует токен доступа.",
+        "en": "The model repository is private and needs an access token."
+      },
+      "next_action": {
+        "ru": "Войдите в Hugging Face (sprut model hf-login или в настройках Sprut Desktop) и повторите.",
+        "en": "Log in to Hugging Face (sprut model hf-login or in Sprut Desktop settings) and try again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF59", "TC39"]
+    },
+    {
+      "code": "MODEL_NOT_ALLOWED_IN_MODE",
+      "description": {
+        "ru": "Модель нельзя использовать в текущем режиме: непроверенные модели работают только в single.",
+        "en": "The model cannot be used in the current mode: unverified models work only in single mode."
+      },
+      "next_action": {
+        "ru": "Переключитесь в режим single или выберите проверенную модель из каталога.",
+        "en": "Switch to single mode or choose a verified model from the catalog."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF55", "TC40"]
+    },
+    {
+      "code": "PROFILE_LOCKED",
+      "description": {
+        "ru": "Профиль заблокирован другим процессом или операция уже выполняется.",
+        "en": "The profile is locked by another process or the operation is already running."
+      },
+      "next_action": {
+        "ru": "Дождитесь завершения текущей операции или проверьте её статус.",
+        "en": "Wait for the current operation to finish or check its status."
+      },
+      "retryable": true,
+      "cli_exit_code": 8,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "SPRUT-CLIENT-SPECIFICATION 4.3", "SPRUT-CLIENT-SPECIFICATION 7.3", "CF04"]
+    },
+    {
+      "code": "DRAIN_TIMEOUT",
+      "description": {
+        "ru": "Задачи не завершились за время, отведённое на drain; узел остаётся в DRAINING.",
+        "en": "Tasks did not finish within the drain timeout; the node stays in DRAINING."
+      },
+      "next_action": {
+        "ru": "Повторите drain с большим таймаутом или остановите задачи явно.",
+        "en": "Repeat the drain with a longer timeout or stop the tasks explicitly."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF43"]
+    },
+    {
+      "code": "AUTH_REJECTED",
+      "description": {
+        "ru": "Координатор отклонил идентичность узла (сертификат или допуск).",
+        "en": "The coordinator rejected the node identity (certificate or admission)."
+      },
+      "next_action": {
+        "ru": "Проверьте сертификаты узла и допуск оператором.",
+        "en": "Check the node certificates and operator admission."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "03-CONTRACTS 7", "CF60", "CF61"]
+    },
+    {
+      "code": "VERSION_MISMATCH",
+      "description": {
+        "ru": "Версия протокола или схемы несовместима.",
+        "en": "The protocol or schema version is incompatible."
+      },
+      "next_action": {
+        "ru": "Обновите клиент или координатор до совместимых версий.",
+        "en": "Update the client or the coordinator to compatible versions."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "03-CONTRACTS 7", "03-CONTRACTS 1"]
+    },
+    {
+      "code": "COORDINATOR_UNREACHABLE",
+      "description": {
+        "ru": "Координатор недоступен.",
+        "en": "The coordinator is unreachable."
+      },
+      "next_action": {
+        "ru": "Проверьте адрес координатора и сетевое подключение, затем повторите.",
+        "en": "Check the coordinator address and the network connection, then try again."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF61", "CF62"]
+    },
+    {
+      "code": "DATA_HASH_MISMATCH",
+      "description": {
+        "ru": "Hash данных задачи не совпадает с указанным в manifest.",
+        "en": "The task data hash does not match the manifest."
+      },
+      "next_action": {
+        "ru": "Получите данные задачи заново; если ошибка повторяется, сообщите оператору.",
+        "en": "Fetch the task data again; if the error repeats, inform the operator."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7"]
+    },
+    {
+      "code": "PEER_UNREACHABLE",
+      "description": {
+        "ru": "Другой участник группы недоступен.",
+        "en": "Another member of the group is unreachable."
+      },
+      "next_action": {
+        "ru": "Проверьте сеть LAN/VPN между узлами; координатор может начать новую попытку.",
+        "en": "Check the LAN/VPN between the nodes; the coordinator may start a new attempt."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7"]
+    },
+    {
+      "code": "PROFILE_EXPIRED",
+      "description": {
+        "ru": "Профиль производительности (TaskProfile или LinkProfile) устарел.",
+        "en": "The performance profile (TaskProfile or LinkProfile) has expired."
+      },
+      "next_action": {
+        "ru": "Выполните профилирование заново.",
+        "en": "Run profiling again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7"]
+    },
+    {
+      "code": "PLAN_CONFLICT",
+      "description": {
+        "ru": "План попытки конфликтует с текущим состоянием или другим планом.",
+        "en": "The attempt plan conflicts with the current state or another plan."
+      },
+      "next_action": {
+        "ru": "Дождитесь нового плана от координатора.",
+        "en": "Wait for a new plan from the coordinator."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7"]
+    },
+    {
+      "code": "COUNT_MISMATCH",
+      "description": {
+        "ru": "Счётчики примеров или назначений не совпадают с планом попытки.",
+        "en": "Example or assignment counts do not match the attempt plan."
+      },
+      "next_action": {
+        "ru": "Сообщите оператору; попытка будет прервана.",
+        "en": "Inform the operator; the attempt will be aborted."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7", "03-CONTRACTS 5"]
+    },
+    {
+      "code": "NONFINITE_GRADIENT",
+      "description": {
+        "ru": "В градиенте обнаружено нечисловое значение (NaN или Inf).",
+        "en": "A non-finite value (NaN or Inf) was found in the gradient."
+      },
+      "next_action": {
+        "ru": "Попытка прервана; продолжение возможно с последнего committed checkpoint по решению оператора.",
+        "en": "The attempt is aborted; it can resume from the last committed checkpoint at the operator's decision."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7"]
+    },
+    {
+      "code": "COLLECTIVE_TIMEOUT",
+      "description": {
+        "ru": "Коллективная операция не завершилась в отведённое время.",
+        "en": "A collective operation did not complete in time."
+      },
+      "next_action": {
+        "ru": "Проверьте сеть между узлами; возобновление выполняется новой попыткой из committed checkpoint.",
+        "en": "Check the network between the nodes; work resumes as a new attempt from the committed checkpoint."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7", "03-CONTRACTS 4"]
+    },
+    {
+      "code": "CHECKPOINT_INCOMPLETE",
+      "description": {
+        "ru": "Контрольная точка неполна: не хватает файлов или подтверждений всех ranks.",
+        "en": "The checkpoint is incomplete: files or acknowledgements from all ranks are missing."
+      },
+      "next_action": {
+        "ru": "Используйте последний committed checkpoint.",
+        "en": "Use the last committed checkpoint."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7", "CF71"]
+    },
+    {
+      "code": "STALE_ATTEMPT",
+      "description": {
+        "ru": "Сообщение относится к устаревшей попытке и не принимается.",
+        "en": "The message belongs to a stale attempt and is not accepted."
+      },
+      "next_action": {
+        "ru": "Действие не требуется: узел перейдёт к текущей попытке.",
+        "en": "No action needed: the node moves on to the current attempt."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["03-CONTRACTS 7", "03-CONTRACTS 5"]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/operation-event-vector.schema.json",
+  "title": "OperationEvent test vectors",
+  "description": "Format of test-vectors/operation-events/events.json. producer: whether a producer may emit the event (strict schema + registered reason_code/operation/state). consumer: whether a consumer must accept it (unknown members dropped, then schema; unregistered but well-formed codes/operations/states accepted). See schemas/operation-event.schema.json. An event valid for producers is always valid for consumers.",
+  "type": "object",
+  "required": ["description", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "description": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "producer", "consumer", "event"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "producer": {"type": "boolean"},
+          "consumer": {"type": "boolean"},
+          "note": {"type": "string", "minLength": 1},
+          "event": true
+        }
+      }
+    }
+  }
+}

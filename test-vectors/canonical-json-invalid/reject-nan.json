@@ -1,0 +1,7 @@
+{
+  "name": "reject-nan",
+  "description": "The token NaN is not RFC 8259 JSON, so the text is malformed (NON_FINITE_NUMBER is only for serializing in-memory floats).",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":NaN}",
+  "expected_error": "INVALID_JSON"
+}

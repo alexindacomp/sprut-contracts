@@ -1,0 +1,7 @@
+{
+  "name": "reject-hash-not-string",
+  "description": "A stored top-level hash must be a string.",
+  "operation": "object_hash",
+  "input_text": "{\"kind\":\"example_record\",\"hash\":12}",
+  "expected_error": "INVALID_HASH_MEMBER"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "empty-containers",
+  "description": "Empty objects, arrays and strings, also nested.",
+  "operation": "canonicalize",
+  "input": {
+    "e": [
+      []
+    ],
+    "d": [
+      {}
+    ],
+    "c": "",
+    "b": [],
+    "a": {}
+  },
+  "canonical": "{\"a\":{},\"b\":[],\"c\":\"\",\"d\":[{}],\"e\":[[]]}",
+  "sha256": "748ec5993383c69816c41d11e9e5ef5e8c595f356879ed8bdfe9ec74adfb8f16"
+}

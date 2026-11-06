@@ -1,0 +1,84 @@
+// Common Sprut messages shared by the clients and the coordinator.
+//
+// Conventions (normative for every file in package sprut.v1):
+//
+// * Reason codes are carried as `string` fields whose value is a `code` from
+//   registry/reason-codes.json (UPPER_SNAKE_CASE). They are deliberately not a
+//   Protobuf enum: the registry is the single source of truth, new codes are
+//   added there first, and an older reader must be able to pass an unknown
+//   code through unchanged. An empty string means "no reason code".
+// * State names are carried as `string` fields whose value is a state name of
+//   the corresponding machine in registry/state-machines.json; operation kinds
+//   come from operation_kinds in the same file, which maps each kind to its
+//   machine (bootstrap, node_status or the generic task).
+// * The JSON form of events written by `sprut --json` (read by scripts and
+//   automation; the Desktop core emits the same event shape) is defined by
+//   schemas/operation-event.schema.json, not by the Protobuf JSON mapping
+//   (which would use lowerCamelCase names and enum value names). Field names
+//   below match the JSON member names one to one.
+// * This repository is not a Go module and sets no go_package: each consumer
+//   generates code inside its own module (buf managed mode, go_package_prefix
+//   or an M option). See README.md, "Consuming the contracts".
+// * gRPC services are introduced at stage S1; this file has none.
+syntax = "proto3";
+
+package sprut.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "CommonProto";
+option java_package = "io.github.alexindacomp.sprut.contracts.v1";
+
+// Kind of an OperationEvent. JSON values: progress, state, result, error.
+enum OperationEventType {
+  OPERATION_EVENT_TYPE_UNSPECIFIED = 0;
+  // Work advanced within the current state.
+  OPERATION_EVENT_TYPE_PROGRESS = 1;
+  // The operation entered `state`.
+  OPERATION_EVENT_TYPE_STATE = 2;
+  // Final outcome of the operation.
+  OPERATION_EVENT_TYPE_RESULT = 3;
+  // The operation failed or needs action; reason_code is set.
+  OPERATION_EVENT_TYPE_ERROR = 4;
+}
+
+// Event emitted by the client core for GUI/CLI
+// (SPRUT-CLIENT-SPECIFICATION 7.1 item 4, 8.1).
+message OperationEvent {
+  // Major version of the event format; 1.
+  uint32 schema_version = 1;
+  OperationEventType type = 2;
+  // Identifier of the operation (CF01).
+  string operation_id = 3;
+  // Current state name of the operation, UPPER_SNAKE_CASE; a state of the
+  // machine that operation_kinds maps `operation` to (e.g. RUNNING for
+  // model_pull, which uses the task machine).
+  string state = 4;
+  // Code from registry/reason-codes.json; required when type is ERROR,
+  // empty when absent.
+  string reason_code = 5;
+  // Human-readable, client-authored text in the UI language; never contains
+  // secrets. Limits as in the JSON schema: at most 1024 code points, no control,
+  // zero-width, line-separator or bidi characters.
+  string message = 6;
+  // Event time (UTC).
+  google.protobuf.Timestamp ts = 7;
+  // Optional progress within the current state.
+  OperationProgress progress = 8;
+  // Operation kind from operation_kinds in registry/state-machines.json
+  // (e.g. "bootstrap", "node_status", "model_pull", "mode_switch").
+  // Required (never empty): `state` is interpreted only together with it.
+  string operation = 9;
+}
+
+// Progress within the current state of an operation.
+message OperationProgress {
+  uint64 current = 1;
+  // Absent when unknown; when present, current <= total.
+  optional uint64 total = 2;
+  // Unit of current/total, lower_snake_case (e.g. bytes, steps, items).
+  string unit = 3;
+  // Identifier of the plan step or sub-step being executed.
+  string step = 4;
+}

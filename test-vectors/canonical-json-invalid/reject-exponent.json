@@ -1,0 +1,7 @@
+{
+  "name": "reject-exponent",
+  "description": "Exponent notation is rejected.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1e3}",
+  "expected_error": "NON_INTEGER_NUMBER"
+}

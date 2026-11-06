@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/guard-vector.schema.json",
+  "title": "Transition guard test vectors",
+  "description": "Format of test-vectors/guards/*.json. Each case evaluates the guards of one listed transition of `machine` against `context` (names from the machine's guard_context). expected=allowed: every check holds. expected=rejected: the first failing check rejects the transition with reason_code. Missing context values make a check fail (fail closed).",
+  "type": "object",
+  "required": ["machine", "description", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "machine": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+    "description": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "from", "to", "context", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "from": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "to": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "context": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "plan_id": {"type": "string"},
+              "consented_plan_id": {"type": ["string", "null"]},
+              "plan_action_count": {"type": "integer", "minimum": 0},
+              "step": {
+                "type": "object",
+                "required": ["id", "in_consented_plan", "privileged"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {"type": "string", "minLength": 1},
+                  "in_consented_plan": {"type": "boolean"},
+                  "privileged": {"type": "boolean"}
+                }
+              },
+              "privilege_granted": {"type": "boolean"},
+              "image_digest": {"type": "string"},
+              "image_present": {"type": "boolean"},
+              "consented_image_digests": {"type": "array", "items": {"type": "string"}},
+              "allowlist": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "expected": {"enum": ["allowed", "rejected"]},
+          "reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "expected_next_state": {
+            "description": "State after the rejection per on_reject (the from state when on_reject says stay).",
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+          },
+          "expected_event": {"description": "Type of the OperationEvent emitted after the rejection.", "enum": ["error", "state"]}
+        },
+        "if": {"properties": {"expected": {"const": "rejected"}}},
+        "then": {"required": ["reason_code", "expected_next_state", "expected_event"]},
+        "else": {"not": {"anyOf": [{"required": ["reason_code"]}, {"required": ["expected_next_state"]}, {"required": ["expected_event"]}]}}
+      }
+    }
+  }
+}

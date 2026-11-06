@@ -1,0 +1,7 @@
+{
+  "name": "reject-utf8-encoded-surrogate",
+  "description": "A surrogate encoded directly in UTF-8 (ED A0 80, CESU-8 style) is not valid UTF-8.",
+  "operation": "canonicalize",
+  "input_base64": "eyJhIjoi7aCAIn0=",
+  "expected_error": "INVALID_UNICODE"
+}

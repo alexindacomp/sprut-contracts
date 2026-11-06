@@ -1,0 +1,11 @@
+{
+  "name": "no-unicode-normalization",
+  "description": "Strings are not Unicode-normalized: precomposed U+00E9 and decomposed e+U+0301 are different keys; 'e' (0x65) sorts first.",
+  "operation": "canonicalize",
+  "input": {
+    "é": "precomposed",
+    "e\u0301": "decomposed"
+  },
+  "canonical": "{\"e\u0301\":\"decomposed\",\"é\":\"precomposed\"}",
+  "sha256": "c57984b0473441c370eb2a4c714ab07e698c13c59a816c319f421fc3fe3de928"
+}

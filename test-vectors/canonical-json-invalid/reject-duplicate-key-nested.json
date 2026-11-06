@@ -1,0 +1,7 @@
+{
+  "name": "reject-duplicate-key-nested",
+  "description": "Duplicate member names are rejected at any depth.",
+  "operation": "canonicalize",
+  "input_text": "{\"x\":{\"k\":1,\"k\":1}}",
+  "expected_error": "DUPLICATE_KEY"
+}

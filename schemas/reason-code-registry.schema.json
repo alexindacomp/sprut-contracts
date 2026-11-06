@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/reason-code-registry.schema.json",
+  "title": "Sprut reason-code registry",
+  "description": "Format of registry/reason-codes.json (SPRUT-CLIENT-SPECIFICATION CF02, 8.3; 03-CONTRACTS 7). Reason codes are carried on the wire as plain strings equal to `code`.",
+  "type": "object",
+  "required": ["schema_version", "reason_codes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/reason_code"}
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "reason_code": {
+      "type": "object",
+      "required": ["code", "description", "next_action", "retryable", "cli_exit_code", "platforms", "spec_refs"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "Stable machine-readable code, UPPER_SNAKE_CASE. Never renamed or reused.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$",
+          "maxLength": 64
+        },
+        "description": {
+          "description": "What happened, for the user.",
+          "$ref": "#/$defs/localized"
+        },
+        "next_action": {
+          "description": "What the user should do next.",
+          "$ref": "#/$defs/localized"
+        },
+        "retryable": {
+          "description": "True if repeating the same request with the same inputs, without human action or a change on the host, can succeed (transient condition). Automatic retries are still bounded (03-CONTRACTS 4).",
+          "type": "boolean"
+        },
+        "cli_exit_code": {
+          "description": "Exit code of the sprut CLI when a command ends with this reason code. Must exist in registry/exit-codes.json.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "platforms": {
+          "description": "Client platforms that can emit the code: windows = Sprut Desktop, linux = sprut CLI. Listed in the order windows, linux.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["windows", "linux"]}
+        },
+        "spec_refs": {
+          "description": "Where the code is defined or used in technical_docs.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

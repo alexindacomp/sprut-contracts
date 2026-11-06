@@ -1,0 +1,14 @@
+{
+  "name": "key-ordering-utf16-code-units",
+  "description": "Keys are compared as UTF-16 code units, not code points or UTF-8 bytes: U+1F600 (surrogates D83D DE00) sorts before U+E000. A byte-wise (UTF-8) sort gets this wrong.",
+  "operation": "canonicalize",
+  "input": {
+    "\ue000": "private-use",
+    "😀": "emoji",
+    "ё": "yo",
+    "я": "ya",
+    "z": "latin"
+  },
+  "canonical": "{\"z\":\"latin\",\"я\":\"ya\",\"ё\":\"yo\",\"😀\":\"emoji\",\"\ue000\":\"private-use\"}",
+  "sha256": "911f58d2798e03779f87db8968ef1d3bdaaecd15674bfa9ea756b47bd435241c"
+}

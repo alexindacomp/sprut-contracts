@@ -1,0 +1,7 @@
+{
+  "name": "reject-missing-kind",
+  "description": "object_hash requires a top-level \"kind\" (domain separation).",
+  "operation": "object_hash",
+  "input_text": "{\"a\":1}",
+  "expected_error": "INVALID_KIND"
+}

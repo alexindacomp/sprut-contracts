@@ -1,0 +1,7 @@
+{
+  "name": "reject-negative-zero-exponent",
+  "description": "-0e0 has an exponent: NON_INTEGER_NUMBER.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":-0e0}",
+  "expected_error": "NON_INTEGER_NUMBER"
+}

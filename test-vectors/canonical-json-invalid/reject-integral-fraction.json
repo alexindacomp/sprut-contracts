@@ -1,0 +1,7 @@
+{
+  "name": "reject-integral-fraction",
+  "description": "1.0 is rejected even though its value is integral.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1.0}",
+  "expected_error": "NON_INTEGER_NUMBER"
+}

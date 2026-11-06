@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "status": "proposal",
+  "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 7.3", "SPRUT-CLIENT-SPECIFICATION 7.1 item 5"],
+  "resolution": {
+    "description": {
+      "ru": "Нормативное правило выбора кода возврата команды sprut. Входные данные: usage_error — ошибка аргументов или конфигурации; interrupted — команда прервана SIGINT; incomplete — поток событий операции закончился без события result/error и без terminal- или waiting-состояния (например, ядро аварийно завершилось); succeeded — достигнут результат, который команда должна была получить (false, если операция остановилась в waiting-состоянии, из которого команда должна была выйти; true совместимо только с отсутствием final_state или с состоянием из succeeded_final_states); operation — вид операции из operation_kinds (registry/state-machines.json), который задаёт машину состояний; final_state — авторитетное состояние этой операции в момент завершения команды по журналу/ядру, а не по потоку событий (отсутствуют, если команда не запустила операцию и не подключилась к ней); reason_code — код причины последнего события error или state; interactive — есть TTY и не задан --no-input. Состояния всегда сопоставляются в паре (машина операции, final_state); правила задают машины в match.machine. Операция task с FAILED получает код возврата по reason_code. Правила применяются по порядку, срабатывает первое подходящее. from_reason_code — cli_exit_code кода причины из reason-codes.json; незарегистрированный код даёт код reason_code_fallback.",
+      "en": "Normative rule for choosing the exit code of a sprut command. Inputs: usage_error - invalid arguments or configuration; interrupted - the command was interrupted by SIGINT; incomplete - the operation's event stream ended without a result/error event and without a terminal or waiting state (e.g. the core crashed); succeeded - the outcome the command was asked for was reached (false when the operation stopped in a waiting state the command was meant to leave; true is only consistent with no final_state or a state listed in succeeded_final_states); operation - operation kind from operation_kinds (registry/state-machines.json), which selects the state machine; final_state - the operation's authoritative state at command end according to the journal/core, not the event stream (both absent if the command neither started nor attached to an operation); reason_code - reason code of the last error or state event; interactive - a TTY is present and --no-input is not set. States are always matched as the pair (machine of the operation, final_state); rules name machines in match.machine. A task operation ending FAILED gets the exit code of its reason_code. Rules are applied in order; the first match wins. from_reason_code is the cli_exit_code of the reason code in reason-codes.json; an unregistered code gives the reason_code_fallback exit code."
+    },
+    "succeeded_final_states": {
+      "bootstrap": ["READY", "PLAN_READY", "WAITING_FOR_CONSENT"],
+      "node_status": ["READY", "OFFLINE"],
+      "task": ["SUCCEEDED"]
+    },
+    "rules": [
+      {
+        "id": "usage_error",
+        "match": {"usage_error": true},
+        "exit_code": 2,
+        "description": {"ru": "Ошибка аргументов или конфигурации.", "en": "Invalid arguments or configuration."}
+      },
+      {
+        "id": "interrupted",
+        "match": {"interrupted": true},
+        "exit_code": 130,
+        "description": {"ru": "Команда прервана пользователем (SIGINT).", "en": "The command was interrupted by the user (SIGINT)."}
+      },
+      {
+        "id": "incomplete",
+        "match": {"incomplete": true},
+        "exit_code": 1,
+        "description": {"ru": "Поток событий оборвался без итогового или waiting-состояния; результат неизвестен.", "en": "The event stream ended without a final or waiting state; the outcome is unknown."}
+      },
+      {
+        "id": "succeeded",
+        "match": {"succeeded": true},
+        "exit_code": 0,
+        "description": {"ru": "Достигнут результат, который команда должна была получить (например, setup plan показал план и ждёт согласия).", "en": "The outcome the command was asked for was reached (e.g. setup plan showed the plan, which now waits for consent)."}
+      },
+      {
+        "id": "ready",
+        "match": {"machine": ["bootstrap", "node_status"], "final_state": ["READY"]},
+        "exit_code": 0,
+        "description": {"ru": "Подготовка или узел в состоянии READY.", "en": "Bootstrap or node ended in READY."}
+      },
+      {
+        "id": "action_required",
+        "match": {"machine": ["bootstrap"], "final_state": ["ACTION_REQUIRED"]},
+        "exit_code": 3,
+        "description": {"ru": "Подготовка ждёт действия человека, независимо от кода причины.", "en": "Bootstrap waits for a human action, whatever the reason code."}
+      },
+      {
+        "id": "needs_input_non_interactive",
+        "match": {"machine": ["bootstrap"], "final_state": ["WAITING_FOR_CONSENT", "WAITING_FOR_PRIVILEGE"], "interactive": false},
+        "exit_code": 4,
+        "description": {"ru": "Нужны согласие или права, а интерактивный ввод невозможен. В WAITING_FOR_CONSENT хост не изменён; в WAITING_FOR_PRIVILEGE предыдущие шаги плана могли уже изменить хост.", "en": "Consent or privileges are needed but interactive input is not possible. In WAITING_FOR_CONSENT the host is unchanged; in WAITING_FOR_PRIVILEGE earlier plan steps may already have changed the host."}
+      },
+      {
+        "id": "reboot_required",
+        "match": {"machine": ["bootstrap"], "final_state": ["REBOOT_REQUIRED"]},
+        "exit_code": 5,
+        "description": {"ru": "Нужна перезагрузка или повторный вход в сессию.", "en": "A reboot or a new login session is needed."}
+      },
+      {
+        "id": "cancelled",
+        "match": {"machine": ["bootstrap"], "final_state": ["CANCELLED"]},
+        "exit_code": 130,
+        "description": {"ru": "Подготовка отменена пользователем (отказ в согласии или в правах, sprut setup cancel).", "en": "Bootstrap was cancelled by the user (consent or privileges declined, sprut setup cancel)."}
+      },
+      {
+        "id": "task_succeeded",
+        "match": {"machine": ["task"], "final_state": ["SUCCEEDED"]},
+        "exit_code": 0,
+        "description": {"ru": "Операция task (загрузка модели, экспорт и т. п.) завершилась успешно.", "en": "A task operation (model pull, export and so on) succeeded."}
+      },
+      {
+        "id": "task_cancelled",
+        "match": {"machine": ["task"], "final_state": ["CANCELLED"]},
+        "exit_code": 130,
+        "description": {"ru": "Операция task отменена пользователем.", "en": "A task operation was cancelled by the user."}
+      },
+      {
+        "id": "reason_code",
+        "match": {"has_reason_code": true},
+        "exit_code": "from_reason_code",
+        "description": {"ru": "Код возврата по коду причины (6, 7, 8 и т. д.).", "en": "Exit code mapped from the reason code (6, 7, 8 and so on)."}
+      },
+      {
+        "id": "fallback",
+        "match": {},
+        "exit_code": 1,
+        "description": {"ru": "Любая другая ошибка выполнения.", "en": "Any other runtime error."}
+      }
+    ]
+  },
+  "exit_codes": [
+    {
+      "code": 0,
+      "name": "SUCCESS",
+      "description": {"ru": "Успех / READY.", "en": "Success / READY."}
+    },
+    {
+      "code": 1,
+      "name": "RUNTIME_ERROR",
+      "description": {
+        "ru": "Ошибка выполнения; подробности в reason_code.",
+        "en": "Runtime error; details are in reason_code."
+      },
+      "reason_code_fallback": true
+    },
+    {
+      "code": 2,
+      "name": "USAGE_ERROR",
+      "description": {
+        "ru": "Ошибка использования: аргументы или конфигурация.",
+        "en": "Usage error: arguments or configuration."
+      }
+    },
+    {
+      "code": 3,
+      "name": "ACTION_REQUIRED",
+      "description": {
+        "ru": "Нужно действие человека (состояние ACTION_REQUIRED).",
+        "en": "A human action is required (ACTION_REQUIRED state)."
+      },
+      "reason_codes": ["VIRTUALIZATION_DISABLED", "WSL_POLICY_BLOCKED"]
+    },
+    {
+      "code": 4,
+      "name": "CONSENT_OR_PRIVILEGE_REQUIRED",
+      "description": {
+        "ru": "Требуется согласие или привилегии, а интерактивный ввод невозможен. В WAITING_FOR_CONSENT хост не изменён; в WAITING_FOR_PRIVILEGE предыдущие шаги плана могли уже изменить хост.",
+        "en": "Consent or privileges are required but interactive input is not possible. In WAITING_FOR_CONSENT the host is unchanged; in WAITING_FOR_PRIVILEGE earlier plan steps may already have changed the host."
+      },
+      "reason_codes": ["CONSENT_REQUIRED", "PRIVILEGE_REQUIRED"]
+    },
+    {
+      "code": 5,
+      "name": "REBOOT_OR_RELOGIN_REQUIRED",
+      "description": {
+        "ru": "Требуется перезагрузка (REBOOT_REQUIRED) или повторный вход в сессию.",
+        "en": "A reboot (REBOOT_REQUIRED) or a new login session is required."
+      },
+      "reason_codes": ["REBOOT_REQUIRED", "RELOGIN_REQUIRED"]
+    },
+    {
+      "code": 6,
+      "name": "DEVICE_UNAVAILABLE",
+      "description": {
+        "ru": "Запрошенное устройство недоступно (DEVICE_UNAVAILABLE).",
+        "en": "The requested device is unavailable (DEVICE_UNAVAILABLE)."
+      },
+      "reason_codes": ["DEVICE_UNAVAILABLE"]
+    },
+    {
+      "code": 7,
+      "name": "UNSUPPORTED_PROFILE",
+      "description": {
+        "ru": "Неподдерживаемый профиль: ОС, архитектура или движок (UNSUPPORTED_PROFILE).",
+        "en": "Unsupported profile: OS, architecture or engine (UNSUPPORTED_PROFILE)."
+      },
+      "reason_codes": ["UNSUPPORTED_PROFILE"]
+    },
+    {
+      "code": 8,
+      "name": "PROFILE_LOCKED",
+      "description": {
+        "ru": "Профиль заблокирован или операция уже выполняется (PROFILE_LOCKED).",
+        "en": "The profile is locked or the operation is already running (PROFILE_LOCKED)."
+      },
+      "reason_codes": ["PROFILE_LOCKED"]
+    },
+    {
+      "code": 130,
+      "name": "CANCELLED_BY_USER",
+      "description": {
+        "ru": "Отменено пользователем: SIGINT или операция завершилась в CANCELLED.",
+        "en": "Cancelled by the user: SIGINT, or the operation ended in CANCELLED."
+      }
+    }
+  ]
+}

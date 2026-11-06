@@ -1,0 +1,7 @@
+{
+  "name": "reject-duplicate-key-escaped",
+  "description": "Member names are compared after unescaping: \"\\u0061\" and \"a\" are the same name.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1,\"\\u0061\":2}",
+  "expected_error": "DUPLICATE_KEY"
+}

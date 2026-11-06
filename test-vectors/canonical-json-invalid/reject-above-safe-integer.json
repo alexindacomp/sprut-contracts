@@ -1,0 +1,7 @@
+{
+  "name": "reject-above-safe-integer",
+  "description": "2^53 is outside the safe range.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":9007199254740992}",
+  "expected_error": "INTEGER_OUT_OF_RANGE"
+}
