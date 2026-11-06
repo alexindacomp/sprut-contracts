@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/installation-plan-vector.schema.json",
+  "title": "InstallationPlan test vector",
+  "description": "Format of test-vectors/installation-plans/*.json (docs/installation-plan.md). `document` is the plan as received; the vector file itself satisfies the hashing restrictions, so `document` can be serialized, parsed and hashed as is. expected=valid: the plan is accepted and `derived` gives the guard inputs every implementation must compute from it. expected=invalid: the plan is rejected with the category expected_error (docs/installation-plan.md section 6). Each invalid vector contains exactly one violation.",
+  "type": "object",
+  "required": ["name", "description", "document", "expected"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "description": {"type": "string", "minLength": 1},
+    "document": true,
+    "expected": {"enum": ["valid", "invalid"]},
+    "expected_error": {
+      "enum": ["INVALID_JSON", "INVALID_KIND", "INVALID_HASH_MEMBER", "SCHEMA_VIOLATION", "HASH_MISMATCH",
+               "UNKNOWN_STEP_KIND", "STEP_NOT_ON_PLATFORM", "DUPLICATE_STEP_ID", "PRIVILEGE_MISMATCH", "FLAG_MISMATCH",
+               "STEP_MEMBER_MISSING", "STEP_MEMBER_NOT_ALLOWED", "SOURCE_NOT_OFFICIAL", "DUPLICATE_IMAGE",
+               "IMAGE_NOT_LISTED", "DUPLICATE_PULL", "TITLE_MISMATCH", "DUPLICATE_LICENCE", "LICENCE_UNKNOWN",
+               "DISK_ESTIMATE_MISMATCH", "STATE_NOT_ON_PLATFORM", "LICENCE_MISSING", "UNPAIRED_UNREGISTER",
+               "WSLCONFIG_REPLACED_MISMATCH", "DOCKER_ACCESS_MISMATCH"]
+    },
+    "derived": {
+      "type": "object",
+      "required": ["plan_id", "plan_action_count", "consented_image_references", "privileged_step_ids", "windows_elevated_steps",
+                   "required_licence_ids", "required_acknowledgements"],
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "plan_action_count": {"type": "integer", "minimum": 0},
+        "consented_image_references": {
+          "description": "ImageReferences of the image_pull steps, in step order (guard input consented_image_references once this plan is consented).",
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[^@]+@sha256:[0-9a-f]{64}$"}
+        },
+        "privileged_step_ids": {"type": "array", "items": {"type": "string"}},
+        "required_licence_ids": {
+          "description": "ids of licences[] in document order: guard input required_licence_ids of the consent effect.",
+          "type": "array", "items": {"type": "string"}
+        },
+        "required_acknowledgements": {
+          "description": "Acknowledgements of the plan's step kinds, without duplicates, in step order: guard input required_acknowledgements.",
+          "type": "array", "items": {"enum": ["docker_group", "distro_removal"]}
+        },
+        "windows_elevated_steps": {
+          "description": "For each privileged step of a windows plan, in step order: the step id and the elevated-helper operation. Empty for linux plans.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["step_id", "elevated_step"],
+            "additionalProperties": false,
+            "properties": {
+              "step_id": {"type": "string"},
+              "elevated_step": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "if": {"properties": {"expected": {"const": "valid"}}, "required": ["expected"]},
+  "then": {"required": ["derived"], "not": {"required": ["expected_error"]}},
+  "else": {"required": ["expected_error"], "not": {"required": ["derived"]}}
+}

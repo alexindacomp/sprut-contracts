@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/ownership-vector.schema.json",
+  "title": "Ownership label test vectors",
+  "description": "Format of test-vectors/ownership/cases.json (registry/ownership.json). ownership_cases: the labels read by inspect from an existing resource and whether the client profile `profile` owns it (every label with owned_when other than not_checked is present and matches). caller_label_cases: extra labels a caller asks to put on a new resource and whether the core accepts them (keys outside the reserved namespace; keys and values match label_charset_pattern).",
+  "type": "object",
+  "required": ["description", "profile", "ownership_cases", "caller_label_cases", "adoption_cases"],
+  "additionalProperties": false,
+  "properties": {
+    "description": {"type": "string", "minLength": 1},
+    "profile": {"type": "string", "minLength": 1},
+    "ownership_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "labels", "owned"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+          "owned": {"type": "boolean"}
+        }
+      }
+    },
+    "adoption_cases": {
+      "description": "SEC-m5: whether an existing labelled resource may be reused: owned by labels, recorded in the journal, and inspect shows an allowlisted image, no host bind mounts, not privileged, no Docker socket. Missing facts mean not adoptable.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "labels", "in_journal", "inspect", "adoptable"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+          "in_journal": {"type": "boolean"},
+          "inspect": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "image_allowlisted": {"type": "boolean"},
+              "host_bind_mounts": {"type": "boolean"},
+              "privileged": {"type": "boolean"},
+              "docker_socket_mounted": {"type": "boolean"}
+            }
+          },
+          "adoptable": {"type": "boolean"}
+        }
+      }
+    },
+    "caller_label_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "labels", "accepted"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+          "accepted": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

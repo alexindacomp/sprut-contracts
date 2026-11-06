@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/wsl-resources.schema.json",
+  "title": "WSL resources (Windows)",
+  "description": "WSL VM resources managed by Sprut Desktop (SPRUT-CLIENT-SPECIFICATION 6.4, CR01-CR07; docs/wsl-resources.md). `wsl2` holds the MANAGED keys of the [wsl2] section of %USERPROFILE%\\.wslconfig; member names are the literal .wslconfig key names and values are written exactly as given (`memory=8GB`). `sprut_distro.max_disk_size` is not a .wslconfig key: it is the maximum virtual disk size of the Sprut distribution only, applied with WSL tooling for that distribution. A member that is absent is left unchanged; removing a value happens only by restoring the backup (CR07). No member has a default in this contract: recommended values are open (spec Q15) and are never filled in silently. Rules: only managed keys change, every other key, section and comment is kept byte for byte; a backup is made before every change and the write is atomic; the global effect on all WSL2 distributions is shown before saving and replacing a value not set by Sprut needs confirmation (WSL_CONFIG_CONFLICT); new values take effect only after `wsl --shutdown`, which is a separate confirmed action (plan step restart_wsl) after a drain, and until then the state is WSL_RESTART_REQUIRED; after the restart the effective resources are read inside the Sprut distribution and used as the budget. Unknown members are rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "wsl2": {"$ref": "#/$defs/wslconfig_wsl2"},
+    "sprut_distro": {
+      "type": "object",
+      "required": ["max_disk_size"],
+      "additionalProperties": false,
+      "properties": {
+        "max_disk_size": {"$ref": "#/$defs/disk_size"}
+      }
+    }
+  },
+  "anyOf": [
+    {"required": ["wsl2"]},
+    {"required": ["sprut_distro"]}
+  ],
+  "$defs": {
+    "wslconfig_wsl2": {
+      "description": "Managed keys of the [wsl2] section of .wslconfig (CR01, CR02); at least one. memory: VM memory, a positive whole number of MB or GB. processors: logical processors, 1-1024. swap: swap file size, `0` disables swap, otherwise a positive whole number of MB or GB. networkingMode: only `nat` (mirrored is planned for node mode and stays refused until S2 decides Q14). No other .wslconfig key is managed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory": {"type": "string", "pattern": "^[1-9][0-9]{0,6}(MB|GB)$"},
+        "processors": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "swap": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,6}(MB|GB))$"},
+        "networkingMode": {"enum": ["nat"]}
+      },
+      "anyOf": [
+        {"required": ["memory"]},
+        {"required": ["processors"]},
+        {"required": ["swap"]},
+        {"required": ["networkingMode"]}
+      ]
+    },
+    "disk_size": {
+      "description": "Maximum virtual disk size of the Sprut distribution: a positive whole number of GB or TB. Never applied to other distributions and never through .wslconfig defaultVhdSize (that key is global and not managed).",
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,6}(GB|TB)$"
+    }
+  }
+}

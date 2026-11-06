@@ -1,0 +1,87 @@
+{
+  "name": "docker-access-group-without-step",
+  "description": "A non-member with docker_access docker_group needs the group step.",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "absent",
+      "docker_group": "not_member",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "not_member",
+      "worker_image": "present"
+    },
+    "steps": [
+      {
+        "id": "apt-add-docker-repo",
+        "kind": "apt_add_docker_repo",
+        "title": {
+          "ru": "Подключить официальный apt-репозиторий Docker",
+          "en": "Add the official Docker apt repository"
+        },
+        "privileged": true,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 4096,
+        "source": {
+          "url": "https://download.docker.com/linux/ubuntu/gpg",
+          "sha256": "fdca262f9e7d5743c013fa738cfd2ecb5498cf9279f264b54a7119ab8b57fa37"
+        }
+      },
+      {
+        "id": "install-docker-engine",
+        "kind": "install_docker_engine",
+        "title": {
+          "ru": "Установить Docker Engine",
+          "en": "Install Docker Engine"
+        },
+        "privileged": true,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 450000000
+      },
+      {
+        "id": "start-engine",
+        "kind": "start_engine",
+        "title": {
+          "ru": "Запустить Docker Engine и включить его автозапуск",
+          "en": "Start Docker Engine and enable it at boot"
+        },
+        "privileged": true,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      },
+      {
+        "id": "pull-worker",
+        "kind": "image_pull",
+        "title": {
+          "ru": "Загрузить образ ghcr.io/alexindacomp/sprut-worker",
+          "en": "Download image ghcr.io/alexindacomp/sprut-worker"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 3000000000,
+        "image": "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+      }
+    ],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "docker_access": "docker_group",
+    "disk_estimate_bytes": 3450004096,
+    "hash": "cd7f40a5912ad5112587a330e630111354b4243ff5f2ca760c0aacac62d03a31"
+  },
+  "expected": "invalid",
+  "expected_error": "DOCKER_ACCESS_MISMATCH"
+}

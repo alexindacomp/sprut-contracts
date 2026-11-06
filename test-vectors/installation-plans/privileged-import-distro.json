@@ -1,0 +1,204 @@
+{
+  "name": "privileged-import-distro",
+  "description": "import_distro is not host elevation (wsl --import as the user).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL_MISSING",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "ready",
+      "docker_engine": "running",
+      "worker_image": "present"
+    },
+    "steps": [
+      {
+        "id": "enable-wsl-features",
+        "kind": "enable_wsl_features",
+        "title": {
+          "ru": "Включить компонент Windows «Подсистема Windows для Linux»",
+          "en": "Enable the Windows feature Windows Subsystem for Linux"
+        },
+        "privileged": true,
+        "requires_reboot": true,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      },
+      {
+        "id": "enable-vm-platform",
+        "kind": "enable_vm_platform",
+        "title": {
+          "ru": "Включить компонент Windows «Платформа виртуальной машины»",
+          "en": "Enable the Windows feature Virtual Machine Platform"
+        },
+        "privileged": true,
+        "requires_reboot": true,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      },
+      {
+        "id": "install-wsl",
+        "kind": "install_wsl",
+        "title": {
+          "ru": "Установить WSL из официального источника",
+          "en": "Install WSL from the official source"
+        },
+        "privileged": true,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 250000000,
+        "source": {
+          "url": "https://github.com/microsoft/WSL/releases/download/2.3.26/wsl.2.3.26.0.x64.msi",
+          "sha256": "42f08742fa0dbd8e46470fc9f87bef841015fb2b520838b1c35c86921d4da09b"
+        }
+      },
+      {
+        "id": "import-distro",
+        "kind": "import_distro",
+        "title": {
+          "ru": "Создать дистрибутив WSL Sprut из образа Ubuntu",
+          "en": "Create the Sprut WSL distribution from the Ubuntu image"
+        },
+        "privileged": true,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 1500000000,
+        "source": {
+          "url": "https://cloud-images.ubuntu.com/wsl/releases/24.04/current/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz",
+          "sha256": "82d4e02a55051683cdb3ced08fba09057936495c67b4077a499d90cf9abe365e"
+        },
+        "licence_ids": [
+          "ubuntu"
+        ]
+      },
+      {
+        "id": "configure-distro",
+        "kind": "configure_distro",
+        "title": {
+          "ru": "Включить systemd в дистрибутиве Sprut",
+          "en": "Enable systemd in the Sprut distribution"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      },
+      {
+        "id": "apt-add-docker-repo",
+        "kind": "apt_add_docker_repo",
+        "title": {
+          "ru": "Подключить официальный apt-репозиторий Docker",
+          "en": "Add the official Docker apt repository"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 4096,
+        "source": {
+          "url": "https://download.docker.com/linux/ubuntu/gpg",
+          "sha256": "fdca262f9e7d5743c013fa738cfd2ecb5498cf9279f264b54a7119ab8b57fa37"
+        }
+      },
+      {
+        "id": "install-docker-engine",
+        "kind": "install_docker_engine",
+        "title": {
+          "ru": "Установить Docker Engine",
+          "en": "Install Docker Engine"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 450000000
+      },
+      {
+        "id": "start-engine",
+        "kind": "start_engine",
+        "title": {
+          "ru": "Запустить Docker Engine и включить его автозапуск",
+          "en": "Start Docker Engine and enable it at boot"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      },
+      {
+        "id": "write-wslconfig",
+        "kind": "write_wslconfig",
+        "title": {
+          "ru": "Изменить ресурсы WSL в .wslconfig (действует на все дистрибутивы WSL)",
+          "en": "Change WSL resources in .wslconfig (affects all WSL distributions)"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": true,
+        "estimated_bytes": 0,
+        "wslconfig": {
+          "memory": "8GB",
+          "processors": 4
+        },
+        "wslconfig_file": {
+          "sha256": "absent",
+          "replaced": {}
+        }
+      },
+      {
+        "id": "restart-wsl",
+        "kind": "restart_wsl",
+        "title": {
+          "ru": "Перезапустить WSL (остановит все дистрибутивы WSL)",
+          "en": "Restart WSL (stops all WSL distributions)"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      },
+      {
+        "id": "pull-worker",
+        "kind": "image_pull",
+        "title": {
+          "ru": "Загрузить образ ghcr.io/alexindacomp/sprut-worker",
+          "en": "Download image ghcr.io/alexindacomp/sprut-worker"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 3000000000,
+        "image": "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+      }
+    ],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [
+      {
+        "id": "ubuntu",
+        "url": "https://ubuntu.com/legal/terms",
+        "sha256": "cd5a9e1421fb98041d2aab6a60fe13800bf5e8be9ebf76dd0569baf4d1ef7d22"
+      }
+    ],
+    "disk_estimate_bytes": 5200004096,
+    "hash": "f9003ec427f8f11cdb020d212122bfa3fea9206f85ecda4a6c547ff452ba8d38"
+  },
+  "expected": "invalid",
+  "expected_error": "PRIVILEGE_MISMATCH"
+}

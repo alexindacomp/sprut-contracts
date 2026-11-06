@@ -1,0 +1,70 @@
+{
+  "name": "linux-pull-only",
+  "description": "Engine ready, two images missing: two image_pull steps are two actions, so the plan needs consent (SEC-M1); consented_image_digests are both pulled digests.",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "steps": [
+      {
+        "id": "pull-worker",
+        "kind": "image_pull",
+        "title": {
+          "ru": "Загрузить образ ghcr.io/alexindacomp/sprut-worker",
+          "en": "Download image ghcr.io/alexindacomp/sprut-worker"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 3000000000,
+        "image": "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+      },
+      {
+        "id": "pull-diagnostic",
+        "kind": "image_pull",
+        "title": {
+          "ru": "Загрузить образ ghcr.io/alexindacomp/sprut-diagnostic",
+          "en": "Download image ghcr.io/alexindacomp/sprut-diagnostic"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 200000000,
+        "image": "ghcr.io/alexindacomp/sprut-diagnostic@sha256:4d3b78911718c0916d33d5b0a6cce4b59e9eee23434fba4e72b6a2c51c5b13ad"
+      }
+    ],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22",
+      "ghcr.io/alexindacomp/sprut-diagnostic@sha256:4d3b78911718c0916d33d5b0a6cce4b59e9eee23434fba4e72b6a2c51c5b13ad"
+    ],
+    "licences": [],
+    "docker_access": "docker_group",
+    "disk_estimate_bytes": 3200000000,
+    "hash": "c3f9097e5e744a37620636ae7aaa5760ba9aa11a38c47fdad6ddd9e36c709bf0"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "c3f9097e5e744a37620636ae7aaa5760ba9aa11a38c47fdad6ddd9e36c709bf0",
+    "plan_action_count": 2,
+    "consented_image_references": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22",
+      "ghcr.io/alexindacomp/sprut-diagnostic@sha256:4d3b78911718c0916d33d5b0a6cce4b59e9eee23434fba4e72b6a2c51c5b13ad"
+    ],
+    "privileged_step_ids": [],
+    "windows_elevated_steps": [],
+    "required_licence_ids": [],
+    "required_acknowledgements": []
+  }
+}

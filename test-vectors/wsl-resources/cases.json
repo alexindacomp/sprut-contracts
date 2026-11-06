@@ -1,0 +1,39 @@
+{
+  "description": "WSL resources vectors (schemas/wsl-resources.schema.json, CR01-CR07). Values are examples, not recommended defaults (Q15 is open).",
+  "cases": [
+    {"name": "all-wsl2-keys", "valid": true, "value": {"wsl2": {"memory": "8GB", "processors": 4, "swap": "2GB", "networkingMode": "nat"}}},
+    {"name": "memory-in-mb", "valid": true, "value": {"wsl2": {"memory": "6144MB"}}},
+    {"name": "swap-disabled", "valid": true, "value": {"wsl2": {"swap": "0"}}},
+    {"name": "nat-networking", "valid": true, "value": {"wsl2": {"networkingMode": "nat"}}},
+    {"name": "mirrored-networking-refused", "note": "Q14: mirrored stays refused until S2 decides it (fail closed)", "valid": false, "value": {"wsl2": {"networkingMode": "mirrored"}}},
+    {"name": "distro-disk-only", "valid": true, "value": {"sprut_distro": {"max_disk_size": "512GB"}}},
+    {"name": "distro-disk-in-tb", "valid": true, "value": {"sprut_distro": {"max_disk_size": "1TB"}}},
+    {"name": "both", "valid": true, "value": {"wsl2": {"processors": 8}, "sprut_distro": {"max_disk_size": "256GB"}}},
+    {"name": "empty-object", "note": "at least one managed value", "valid": false, "value": {}},
+    {"name": "empty-wsl2", "valid": false, "value": {"wsl2": {}}},
+    {"name": "unmanaged-key", "note": "only managed keys", "valid": false, "value": {"wsl2": {"memory": "8GB", "kernel": "C:\\kernel"}}},
+    {"name": "default-vhd-size-not-managed", "note": "the distro disk size is never set through the global defaultVhdSize", "valid": false, "value": {"wsl2": {"defaultVhdSize": "512GB"}}},
+    {"name": "other-section", "valid": false, "value": {"experimental": {"autoMemoryReclaim": "gradual"}}},
+    {"name": "memory-without-unit", "valid": false, "value": {"wsl2": {"memory": "8"}}},
+    {"name": "memory-short-unit", "valid": false, "value": {"wsl2": {"memory": "8G"}}},
+    {"name": "memory-lowercase-unit", "valid": false, "value": {"wsl2": {"memory": "8gb"}}},
+    {"name": "memory-zero", "valid": false, "value": {"wsl2": {"memory": "0GB"}}},
+    {"name": "memory-fraction", "valid": false, "value": {"wsl2": {"memory": "7.5GB"}}},
+    {"name": "processors-zero", "valid": false, "value": {"wsl2": {"processors": 0}}},
+    {"name": "processors-as-string", "valid": false, "value": {"wsl2": {"processors": "4"}}},
+    {"name": "processors-integral-fraction", "note": "type integer rejects 4.0 (docs/canonical-json.md 3.3)", "valid": false, "value": {"wsl2": {"processors": 4.0}}},
+    {"name": "swap-zero-with-unit", "note": "swap is disabled with exactly 0", "valid": false, "value": {"wsl2": {"swap": "0GB"}}},
+    {"name": "networking-mode-uppercase", "valid": false, "value": {"wsl2": {"networkingMode": "NAT"}}},
+    {"name": "networking-mode-bridged", "valid": false, "value": {"wsl2": {"networkingMode": "bridged"}}},
+    {"name": "disk-in-mb", "valid": false, "value": {"sprut_distro": {"max_disk_size": "512MB"}}},
+    {"name": "value-with-newline", "note": "no injection of further .wslconfig lines", "valid": false, "value": {"wsl2": {"memory": "8GB\nkernel=C:\\x"}}}
+  ],
+  "current_value_cases": [
+    {"name": "user-memory-value", "key": "memory", "current_text": "4GB", "outcome": "replaced"},
+    {"name": "user-value-in-other-format", "note": "shown as text, not parsed", "key": "memory", "current_text": "4096 MB", "outcome": "replaced"},
+    {"name": "cyrillic-comment-like-value", "key": "swap", "current_text": "0 # без swap", "outcome": "replaced"},
+    {"name": "value-with-control-character", "key": "processors", "current_text": "4\u001b[2J", "outcome": "WSL_CONFIG_CONFLICT"},
+    {"name": "value-with-bidi-override", "key": "networkingMode", "current_text": "nat‮", "outcome": "WSL_CONFIG_CONFLICT"},
+    {"name": "value-too-long", "key": "memory", "current_text": "88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888", "outcome": "WSL_CONFIG_CONFLICT"}
+  ]
+}

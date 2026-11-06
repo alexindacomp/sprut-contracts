@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/wsl-resources-vector.schema.json",
+  "title": "WSL resources test vectors",
+  "description": "Format of test-vectors/wsl-resources/cases.json. cases: a value and whether it satisfies schemas/wsl-resources.schema.json. current_value_cases (CR-29): the current text of a managed key in .wslconfig and the probe outcome: replaced (it can be shown in wslconfig_file.replaced) or WSL_CONFIG_CONFLICT (not representable: ACTION_REQUIRED naming the key, no plan).",
+  "type": "object",
+  "required": ["description", "cases", "current_value_cases"],
+  "additionalProperties": false,
+  "properties": {
+    "description": {"type": "string", "minLength": 1},
+    "current_value_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "key", "current_text", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "key": {"enum": ["memory", "processors", "swap", "networkingMode"]},
+          "current_text": {"type": "string"},
+          "outcome": {"enum": ["replaced", "WSL_CONFIG_CONFLICT"]}
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "value", "valid"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "value": true,
+          "valid": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

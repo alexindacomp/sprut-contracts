@@ -1,0 +1,7 @@
+{
+  "name": "reject-object-hash-of-array",
+  "description": "object_hash is defined for JSON objects only; a top-level value that is not an object (here an empty array) is INVALID_JSON, not INVALID_KIND (docs/canonical-json.md section 2, issue #2).",
+  "operation": "object_hash",
+  "input_text": "[]",
+  "expected_error": "INVALID_JSON"
+}

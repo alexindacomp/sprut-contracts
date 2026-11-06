@@ -750,6 +750,51 @@
       "cli_exit_code": 1,
       "platforms": ["windows", "linux"],
       "spec_refs": ["03-CONTRACTS 7", "03-CONTRACTS 5"]
+    },
+    {
+      "code": "FOREIGN_RESOURCE",
+      "description": {
+        "ru": "Ресурс, который Sprut собирался изменить (контейнер, volume, сеть или дистрибутив WSL), существует, но не принадлежит Sprut; ничего не изменено.",
+        "en": "A resource Sprut was about to change (container, volume, network or WSL distribution) exists but is not owned by Sprut; nothing was changed."
+      },
+      "next_action": {
+        "ru": "Sprut не изменяет и не удаляет чужие ресурсы. Если конфликтующий ресурс вам не нужен, переименуйте или удалите его сами и повторите проверку.",
+        "en": "Sprut never changes or removes resources it does not own. If you do not need the conflicting resource, rename or remove it yourself, then run the check again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF14", "CF22", "CW02", "CW04", "CW06", "sprut-contracts docs/images-and-ownership.md"]
+    },
+    {
+      "code": "ENGINE_TCP_EXPOSED",
+      "description": {
+        "ru": "Docker Engine принимает подключения по TCP (в том числе на localhost); Sprut с таким engine не работает.",
+        "en": "Docker Engine accepts TCP connections (including on localhost); Sprut does not use such an engine."
+      },
+      "next_action": {
+        "ru": "Отключите TCP-адреса в настройках dockerd (hosts в daemon.json, флаги -H) так, чтобы остался только локальный unix-сокет, и повторите проверку. Sprut не меняет настройки существующего engine за вас.",
+        "en": "Remove the TCP addresses from the dockerd configuration (hosts in daemon.json, -H flags) so that only the local unix socket remains, then run the check again. Sprut does not change the settings of an existing engine for you."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF11", "CW05", "sprut-contracts docs/images-and-ownership.md"]
+    },
+    {
+      "code": "PLAN_INVALID",
+      "description": {
+        "ru": "Документ плана установки нарушает контракт InstallationPlan; план не показан и не выполнен.",
+        "en": "The installation plan document violates the InstallationPlan contract; the plan was not shown or executed."
+      },
+      "next_action": {
+        "ru": "Повторите проверку. Если ошибка повторяется, выгрузите диагностику и сообщите о проблеме.",
+        "en": "Run the check again. If the error repeats, export diagnostics and report the problem."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF12", "CF13", "sprut-contracts docs/installation-plan.md"]
     }
   ]
 }

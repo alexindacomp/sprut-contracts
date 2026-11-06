@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/installation-plan.schema.json",
+  "title": "InstallationPlan",
+  "description": "InstallationPlan document, kind installation_plan (CF12, CF13, 8.1; normative rules in docs/installation-plan.md). The document is a hashed structure: readers parse it with the hashing restrictions of docs/canonical-json.md and plan_id is the value of its top-level `hash`, which is always present and always equal to object_hash(document) recomputed by the reader (HASH_MISMATCH otherwise). Unknown members are rejected at every level: a member a reader does not know can be neither displayed nor consented to, so any new member needs a new schema_version. The plan is a deterministic function of the probed host state, the client version and the bundled contracts: it contains no timestamps, random ids or operation ids, so that rebuilding it for an unchanged host yields the same plan_id. Every element of steps[] is an ACTION, in execution order; read-only checks are not listed (plan_action_count = number of steps). This schema checks structure only; the semantic rules (closed step-kind vocabulary of registry/plan-step-kinds.json, privilege and flag consistency, required and forbidden step members, official sources, image rules, title templates, licence references, disk estimate) are listed in docs/installation-plan.md and implemented by tools/validate.py.",
+  "type": "object",
+  "required": ["kind", "schema_version", "platform", "current_state", "target_state", "steps", "images", "licences", "disk_estimate_bytes", "hash"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "installation_plan"},
+    "schema_version": {"type": "integer", "const": 1},
+    "platform": {
+      "description": "windows: Sprut Desktop (WSL2 + Sprut distribution); linux: sprut CLI on Ubuntu.",
+      "enum": ["windows", "linux"]
+    },
+    "current_state": {
+      "description": "Summary of the probed host state the plan starts from.",
+      "$ref": "#/$defs/state_summary"
+    },
+    "target_state": {
+      "description": "Summary of the host state after all steps succeeded.",
+      "$ref": "#/$defs/state_summary"
+    },
+    "steps": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/step"}
+    },
+    "images": {
+      "description": "Every image the plan uses, pulled or run, as ImageReference; at most one entry per digest. An image without an image_pull step must already be present by digest (guard image_present_by_digest).",
+      "type": "array",
+      "items": {"$ref": "#/$defs/image_reference"}
+    },
+    "licences": {
+      "description": "Licence terms of third-party components installed by the plan. Never accepted on the user's behalf: each one needs its own explicit acceptance before consent (CF13; CLI --accept-license <id>).",
+      "type": "array",
+      "items": {"$ref": "#/$defs/licence"}
+    },
+    "docker_access": {
+      "description": "Linux only, required there: how the user gets access to Docker Engine (spec 7.4 item 3). docker_group: the plan adds the user to the docker group (step add_user_to_docker_group with a separate acknowledgement) unless already a member. none: no group change; Sprut never runs engine operations through sudo by itself, so bootstrap stops at ENGINE_CHECK with ENGINE_PERMISSION_DENIED (ACTION_REQUIRED) until the user grants access. Rules: DOCKER_ACCESS_MISMATCH.",
+      "enum": ["docker_group", "none"]
+    },
+    "disk_estimate_bytes": {
+      "description": "Disk space the plan needs: the sum of estimated_bytes of all steps.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "hash": {
+      "description": "plan_id = object_hash of this document (docs/canonical-json.md section 2).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "state_summary": {
+      "type": "object",
+      "required": ["docker_engine", "worker_image"],
+      "additionalProperties": false,
+      "properties": {
+        "wsl": {"description": "Windows only. A wsl_availability state for which a plan exists.", "enum": ["WSL2_READY", "WSL_OUTDATED", "WSL_MISSING"]},
+        "sprut_distro": {"description": "Windows only.", "enum": ["absent", "broken", "ready"]},
+        "docker_engine": {"enum": ["absent", "stopped", "running"]},
+        "docker_group": {"description": "Linux only: membership of the current user in the docker group.", "enum": ["member", "not_member"]},
+        "nvidia_toolkit": {"enum": ["absent", "installed"]},
+        "worker_image": {"description": "All images of images[] present locally by digest, or not.", "enum": ["absent", "present"]}
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["id", "kind", "title", "privileged", "requires_reboot", "requires_relogin", "requires_wsl_restart", "estimated_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique within the plan (DUPLICATE_STEP_ID). Used by the executor, the elevated helper and OperationEvent progress.step.",
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9]*([_-][a-z0-9]+)*$"
+        },
+        "kind": {
+          "description": "A kind from registry/plan-step-kinds.json (closed vocabulary).",
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+        },
+        "title": {
+          "description": "Exactly the title template of the kind, rendered (only {repository} for image_pull). Never free text from the host or a subprocess.",
+          "type": "object",
+          "required": ["ru", "en"],
+          "additionalProperties": false,
+          "properties": {
+            "ru": {"$ref": "#/$defs/display_text"},
+            "en": {"$ref": "#/$defs/display_text"}
+          }
+        },
+        "privileged": {"description": "Host elevation (UAC / sudo); must equal the registry value for the kind on the plan's platform.", "type": "boolean"},
+        "requires_reboot": {"type": "boolean"},
+        "requires_relogin": {"type": "boolean"},
+        "requires_wsl_restart": {"type": "boolean"},
+        "estimated_bytes": {
+          "description": "Additional disk space the step needs (downloads kept, installed files, image layers).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "image": {"description": "image_pull only: the image to pull; must be listed in images[].", "$ref": "#/$defs/image_reference"},
+        "source": {"$ref": "#/$defs/source"},
+        "wslconfig": {"description": "write_wslconfig only: managed [wsl2] values to write.", "$ref": "#/$defs/wslconfig_wsl2"},
+        "distro_disk_size": {"description": "resize_distro_disk only.", "$ref": "#/$defs/disk_size"},
+        "wslconfig_file": {
+          "description": "write_wslconfig only: the .wslconfig state the plan was built from (CR03). sha256: SHA-256 of the current file bytes, or `absent`. replaced: the current values, as text from the file, of the managed keys this step overwrites (at most the keys of `wslconfig`; empty when the file is absent). A current value that is not representable as display text (control or invisible characters, more than 256 code points) is never put here: the probe reports WSL_CONFIG_CONFLICT for that key and no plan is built (docs/wsl-resources.md). Both are shown to the user and bound by plan_id.",
+          "type": "object",
+          "required": ["sha256", "replaced"],
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {"type": "string", "pattern": "^([0-9a-f]{64}|absent)$"},
+            "replaced": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "memory": {"$ref": "#/$defs/display_text"},
+                "processors": {"$ref": "#/$defs/display_text"},
+                "swap": {"$ref": "#/$defs/display_text"},
+                "networkingMode": {"$ref": "#/$defs/display_text"}
+              }
+            }
+          }
+        },
+        "distro": {
+          "description": "unregister_distro only: the distribution that will be removed, shown to the user. name: registered name; base_path: its registered BasePath; vhdx_bytes: size of its virtual disk (data that will be lost).",
+          "type": "object",
+          "required": ["name", "base_path", "vhdx_bytes"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+            "base_path": {"description": "Registered BasePath, up to the Windows long-path limit of 32767 UTF-16 units (at most 32767 code points here).", "type": "string", "minLength": 1, "maxLength": 32767, "pattern": "^[^\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]*$"},
+            "vhdx_bytes": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+          }
+        },
+        "target_user": {
+          "description": "add_user_to_docker_group only: the user that gets docker access, from the uid of the client process (never from environment variables such as USER or SUDO_USER). root (uid 0) is never a target.",
+          "type": "object",
+          "required": ["name", "uid"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {"description": "Login name as reported for the uid; never starts with '-' (it becomes a command argument).", "type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9._@-]{0,255}$"},
+            "uid": {"type": "integer", "minimum": 1, "maximum": 4294967294}
+          }
+        },
+        "licence_ids": {
+          "description": "Licences of licences[] that apply to what this step installs.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/licence_id"}
+        }
+      }
+    },
+    "display_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]*$"
+    },
+    "source": {
+      "description": "Official source of a downloaded artifact and its integrity: url must start with one of the kind's source_url_prefixes; sha256 is the lowercase hex SHA-256 of the downloaded bytes, checked before use (INTEGRITY_MISMATCH otherwise).",
+      "type": "object",
+      "required": ["url", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {"$ref": "#/$defs/https_url"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "https_url": {
+      "description": "https URL with a lowercase host, no port, no userinfo, no query or fragment; path segments never start with `.` (no `..`) and contain no percent-encoding.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[a-z0-9]+([.-][a-z0-9]+)*(/[A-Za-z0-9_~+=-][A-Za-z0-9._~+=-]*)*/?$"
+    },
+    "licence_id": {"type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"},
+    "licence": {
+      "description": "Licence terms. The client ships the text (pinned by sha256, the SHA-256 of the UTF-8 bytes of the text it displays) and shows it; url is the reference location.",
+      "type": "object",
+      "required": ["id", "url", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/licence_id"},
+        "url": {"$ref": "#/$defs/https_url"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "image_reference": {
+      "description": "ImageReference: `<repository>@<ImageDigest>`, the only form passed to the engine. Its digest part is the identity used by the allowlist and the consented plan.",
+      "type": "string",
+      "maxLength": 327,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+(/[a-z0-9]+([._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$"
+    },
+    "wslconfig_wsl2": {
+      "description": "Managed keys of the [wsl2] section of .wslconfig (CR01, CR02); at least one. memory: VM memory, a positive whole number of MB or GB. processors: logical processors, 1-1024. swap: swap file size, `0` disables swap, otherwise a positive whole number of MB or GB. networkingMode: only `nat` (mirrored is planned for node mode and stays refused until S2 decides Q14). No other .wslconfig key is managed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory": {"type": "string", "pattern": "^[1-9][0-9]{0,6}(MB|GB)$"},
+        "processors": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "swap": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,6}(MB|GB))$"},
+        "networkingMode": {"enum": ["nat"]}
+      },
+      "anyOf": [
+        {"required": ["memory"]},
+        {"required": ["processors"]},
+        {"required": ["swap"]},
+        {"required": ["networkingMode"]}
+      ]
+    },
+    "disk_size": {
+      "description": "Maximum virtual disk size of the Sprut distribution: a positive whole number of GB or TB. Never applied to other distributions and never through .wslconfig defaultVhdSize (that key is global and not managed).",
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,6}(GB|TB)$"
+    }
+  }
+}

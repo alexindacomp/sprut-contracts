@@ -19,7 +19,13 @@ Checks:
     re-verification after restart, ...);
   * canonical JSON test vectors (RFC 8785 / JCS subset, see
     docs/canonical-json.md), recomputed from scratch;
-  * state-transition, exit-code resolution and OperationEvent test vectors.
+  * state-transition, exit-code resolution and OperationEvent test vectors;
+  * the InstallationPlan step-kind registry (closed vocabulary, privilege per
+    platform, elevated-helper operations) and InstallationPlan vectors with
+    their derived guard inputs (docs/installation-plan.md);
+  * image allowlist, ownership labels and WSL resources registries, schemas and
+    vectors; schema definitions copied between files are identical;
+  * guard predicate `reads` equal the inputs of the reference predicates.
 
 Exits 0 when everything passes, 1 otherwise. Every failure is printed as
 "FAIL <file>: <message>".
@@ -52,6 +58,22 @@ D_CANONICAL = "test-vectors/canonical-json/"
 D_CANONICAL_INVALID = "test-vectors/canonical-json-invalid/"
 D_TRANSITIONS = "test-vectors/state-transitions/"
 D_GUARDS = "test-vectors/guards/"
+P_STEP_KINDS = "registry/plan-step-kinds.json"
+P_ALLOWLIST = "registry/image-allowlist.json"
+P_OWNERSHIP = "registry/ownership.json"
+P_PLAN_SCHEMA = "schemas/installation-plan.schema.json"
+P_ALLOWLIST_SCHEMA = "schemas/image-allowlist.schema.json"
+P_IMAGE_SCHEMA = "schemas/image-reference.schema.json"
+P_WSL_SCHEMA = "schemas/wsl-resources.schema.json"
+D_PLANS = "test-vectors/installation-plans/"
+D_EFFECTS = "test-vectors/effects/"
+P_PRECONDITION_VECTORS = "test-vectors/step-preconditions/cases.json"
+P_ALLOWLIST_VECTORS = "test-vectors/image-allowlist/cases.json"
+P_OWNERSHIP_VECTORS = "test-vectors/ownership/cases.json"
+P_WSL_VECTORS = "test-vectors/wsl-resources/cases.json"
+# Files parsed under the hashing restrictions of docs/canonical-json.md section 3 (hashed or
+# hash-parsed documents and the vectors that carry them).
+HASHABLE_PREFIXES = (D_CANONICAL, D_PLANS, P_ALLOWLIST, P_ALLOWLIST_VECTORS)
 
 # Lists copied from the specification; the registry must contain all of them.
 # SPRUT-CLIENT-SPECIFICATION.md v1.1, section 8.3.
@@ -74,6 +96,79 @@ SPEC_CONTRACT_REASON_CODES = [
     "AUTH_REJECTED", "VERSION_MISMATCH", "DATA_HASH_MISMATCH", "MEMORY_BUDGET",
     "PEER_UNREACHABLE", "PROFILE_EXPIRED", "PLAN_CONFLICT", "COUNT_MISMATCH",
     "NONFINITE_GRADIENT", "COLLECTIVE_TIMEOUT", "CHECKPOINT_INCOMPLETE", "STALE_ATTEMPT",
+]
+# Codes introduced by this repository (sprut-contracts 0.2.0, issue #3): touching a resource that
+# is not Sprut's, and a plan document that violates docs/installation-plan.md.
+CONTRACT_REASON_CODES = ["FOREIGN_RESOURCE", "PLAN_INVALID", "ENGINE_TCP_EXPOSED"]
+RAW_INVISIBLE = re.compile("[\u0000-\u001f\u007f-\u009f​-‏ -‮⁦-⁩﻿]")
+# Plan and ownership rules that --self-test switches off to prove the vectors notice.
+RULE_SWITCHES = {"unregister_pairing": True, "docker_access": True, "wslconfig_replaced": True,
+                 "licence_required": True, "adoption_needs_journal": True}
+_RULE_SWITCHES_DEFAULT = dict(RULE_SWITCHES)
+
+# InstallationPlan step kinds (docs/installation-plan.md, registry/plan-step-kinds.json): the closed
+# vocabulary and its privilege per platform. True = host elevation (UAC / sudo). Windows steps run
+# as root inside the Sprut distribution are not host elevation (CW04, CW05); Linux root steps use
+# sudo (spec 7.4 item 1).
+SPEC_STEP_KINDS = {
+    "enable_wsl_features": {"windows": True},
+    "enable_vm_platform": {"windows": True},
+    "install_wsl": {"windows": True},
+    "update_wsl": {"windows": True},
+    "unregister_distro": {"windows": False},
+    "import_distro": {"windows": False},
+    "configure_distro": {"windows": False},
+    "apt_add_docker_repo": {"windows": False, "linux": True},
+    "install_docker_engine": {"windows": False, "linux": True},
+    "add_user_to_docker_group": {"linux": True},
+    "install_nvidia_toolkit": {"windows": False, "linux": True},
+    "start_engine": {"windows": False, "linux": True},
+    "write_wslconfig": {"windows": False},
+    "resize_distro_disk": {"windows": False},
+    "restart_wsl": {"windows": False},
+    "image_pull": {"windows": False, "linux": False},
+}
+# The Windows elevated-helper vocabulary (Java ElevatedStep), issue #3 item 7.
+SPEC_WINDOWS_ELEVATED = {"enable_wsl_features": "ENABLE_WSL_FEATURES", "enable_vm_platform": "ENABLE_VM_PLATFORM",
+                         "install_wsl": "INSTALL_WSL", "update_wsl": "UPDATE_WSL"}
+SPEC_SOURCE_REQUIRED = {"import_distro", "apt_add_docker_repo", "install_nvidia_toolkit"}  # CW04, CW05, 7.4
+SPEC_FLAG_ALWAYS = {("add_user_to_docker_group", "requires_relogin"),  # spec 7.4 item 3
+                    ("write_wslconfig", "requires_wsl_restart")}     # CR04
+SPEC_REBOOT_MAY = set(SPEC_WINDOWS_ELEVATED)                            # CW03: only WSL/feature steps
+STEP_MEMBERS = ("image", "source", "wslconfig", "wslconfig_file", "distro_disk_size", "distro", "target_user")
+SPEC_ACKNOWLEDGEMENTS = {"add_user_to_docker_group": "docker_group",  # spec 7.4 item 3, SEC-C1
+                         "unregister_distro": "distro_removal"}        # CW04, SEC-C2
+SPEC_LICENCE_REQUIRED = {"import_distro"}                              # Ubuntu rootfs (Q10), SEC-m2
+SPEC_STEP_PRECONDITIONS = {
+    "install_wsl": ["source_verified"], "update_wsl": ["source_verified"], "import_distro": ["source_verified"],
+    "apt_add_docker_repo": ["ubuntu_supported", "source_verified"],
+    "install_nvidia_toolkit": ["ubuntu_supported", "source_verified"],
+    "install_docker_engine": ["ubuntu_supported"],
+    "add_user_to_docker_group": ["target_user_current"],
+    "unregister_distro": ["distro_owned"],
+    "write_wslconfig": ["wslconfig_unchanged"],
+    "restart_wsl": ["wsl_restart_confirmed"],  # CR04: a separate confirmed action
+}
+SPEC_PLACEHOLDERS = {"system32", "distro_name", "distro_base_path", "verified_file", "target_user", "codename",
+                     "distro_disk_size"}
+# Placeholder -> step member it needs (a kind may use the placeholder only if it has that member).
+PLACEHOLDER_MEMBER = {"verified_file": "source", "target_user": "target_user", "distro_disk_size": "distro_disk_size"}
+FORBIDDEN_PROGRAMS = {"sh", "bash", "dash", "zsh", "ksh", "fish", "cmd.exe", "powershell.exe", "pwsh", "pwsh.exe",
+                      "python", "python3", "perl", "curl", "wget", "sudo", "su", "wscript.exe", "cscript.exe",
+                      "env", "xargs", "nohup", "timeout"}  # SEC-N4: no program launchers either
+ALLOWED_ENVIRONMENT = {"DEBIAN_FRONTEND": "noninteractive"}
+PREFIX_SHAPE = re.compile(r"^https://[a-z0-9.-]+/(.*/)?$")  # CR-26
+STEP_FLAGS = ("requires_reboot", "requires_relogin", "requires_wsl_restart")
+STATE_COMPONENT_PLATFORMS = {"wsl": "windows", "sprut_distro": "windows", "docker_group": "linux"}
+SPEC_LABEL_NAMESPACE = "io.github.alexindacomp.sprut"
+SPEC_LABELLED_RESOURCES = {"container", "volume", "network"}  # CF22
+# Definitions copied verbatim between schemas (only local $refs are supported): (copy, source).
+SHARED_DEFS = [
+    ((P_ALLOWLIST_SCHEMA, "image_digest"), (P_IMAGE_SCHEMA, "image_digest")),
+    ((P_ALLOWLIST_SCHEMA, "repository"), (P_IMAGE_SCHEMA, "repository")),
+    ((P_PLAN_SCHEMA, "image_reference"), (P_IMAGE_SCHEMA, "image_reference")),
+    ((P_PLAN_SCHEMA, "wslconfig_wsl2"), (P_WSL_SCHEMA, "wslconfig_wsl2")),
+    ((P_PLAN_SCHEMA, "disk_size"), (P_WSL_SCHEMA, "disk_size")),
 ]
 
 # Structural rules derived from the specification. Rule kinds:
@@ -129,8 +224,10 @@ SPEC_MACHINES = {
             ("INSTALLING", "WAITING_FOR_PRIVILEGE"): {"consent_matches_plan", "step_is_privileged_plan_step"},
             ("WAITING_FOR_PRIVILEGE", "INSTALLING"): {"consent_matches_plan", "step_is_privileged_plan_step",
                                                       "privilege_granted"},
-            ("ENGINE_CHECK", "IMAGE_PULL"): {"consent_matches_plan", "image_allowlisted", "image_in_consented_plan"},
-            ("ENGINE_CHECK", "SMOKE_TEST"): {"image_allowlisted", "image_present_by_digest"},  # N1
+            ("ENGINE_CHECK", "IMAGE_PULL"): {"engine_endpoint_local", "consent_matches_plan", "image_allowlisted",
+                                             "image_in_consented_plan"},
+            ("ENGINE_CHECK", "SMOKE_TEST"): {"engine_endpoint_local", "image_allowlisted",
+                                             "image_present_by_digest"},  # N1, SEC-B1
             ("IMAGE_PULL", "SMOKE_TEST"): {"image_allowlisted", "image_present_by_digest"},
         },
         # CR-17: orchestrator decision on what follows a rejected guard ("stay" = remain in `from`).
@@ -145,14 +242,20 @@ SPEC_MACHINES = {
                                                       "PRIVILEGE_REQUIRED": ("stay", "state")},
             ("ENGINE_CHECK", "IMAGE_PULL"): {"CONSENT_REQUIRED": ("PROBING", "state"),
                                              "PLAN_STALE": ("FAILED", "error"),
-                                             "IMAGE_NOT_ALLOWED": ("FAILED", "error")},
+                                             "IMAGE_NOT_ALLOWED": ("FAILED", "error"),
+                                             "ENGINE_REMOTE_CONTEXT": ("ACTION_REQUIRED", "error"),
+                                             "ENGINE_TCP_EXPOSED": ("ACTION_REQUIRED", "error")},
             ("ENGINE_CHECK", "SMOKE_TEST"): {"IMAGE_NOT_ALLOWED": ("FAILED", "error"),
-                                             "PLAN_STALE": ("PROBING", "state")},
+                                             "PLAN_STALE": ("PROBING", "state"),
+                                             "ENGINE_REMOTE_CONTEXT": ("ACTION_REQUIRED", "error"),
+                                             "ENGINE_TCP_EXPOSED": ("ACTION_REQUIRED", "error")},
             ("IMAGE_PULL", "SMOKE_TEST"): {"IMAGE_NOT_ALLOWED": ("FAILED", "error"),
                                            "PLAN_STALE": ("PROBING", "state")},
         },
         "required_effects": [("enter_state", "PROBING", "clear_consent"),
                              ("user_consent", "WAITING_FOR_CONSENT", "set_consented_plan_id")],
+        # CR-20: consent is set only after every licence and acknowledgement; otherwise it stays unset.
+        "required_effect_checks": {("user_consent", "WAITING_FOR_CONSENT", "set_consented_plan_id"): "terms_accepted"},
         "succ_subset": {
             "REBOOT_REQUIRED": {"PROBING", "CANCELLED"},  # CF15
             "ACTION_REQUIRED": {"PROBING", "CANCELLED"},  # resume re-verifies
@@ -219,8 +322,11 @@ def _p_plan_has_no_actions(c: dict):
 
 
 def _p_step_is_privileged_plan_step(c: dict):
+    # CR-12: the step is looked up in the plan whose object_hash is consented_plan_id, so the
+    # predicate needs consent as well as the step flags.
     step = c.get("step")
-    ok = isinstance(step, dict) and step.get("in_consented_plan") is True and step.get("privileged") is True
+    ok = (isinstance(c.get("consented_plan_id"), str) and isinstance(step, dict)
+          and step.get("in_consented_plan") is True and step.get("privileged") is True)
     return None if ok else "CONSENT_REQUIRED"
 
 
@@ -229,13 +335,33 @@ def _p_privilege_granted(c: dict):
 
 
 def _p_image_allowlisted(c: dict):
-    digest, allow = c.get("image_digest"), c.get("allowlist")
-    ok = isinstance(digest, str) and isinstance(allow, list) and digest in allow
+    # SEC-m3: (repository, digest) pairs, i.e. whole ImageReferences, are compared.
+    ref, allow = c.get("image_reference"), c.get("allowlist")
+    ok = isinstance(ref, str) and isinstance(allow, list) and ref in allow
     return None if ok else "IMAGE_NOT_ALLOWED"
 
 
+def _p_engine_endpoint_local(c: dict):
+    # SEC-B1: only a local unix socket; tcp:// is refused even on loopback; no TCP listener at all.
+    endpoint = c.get("engine_endpoint")
+    if not isinstance(endpoint, str) or not endpoint.startswith("unix:///"):
+        return "ENGINE_REMOTE_CONTEXT"
+    return None if c.get("engine_tcp_listener") is False else "ENGINE_TCP_EXPOSED"
+
+
+def _p_terms_accepted(c: dict):
+    # CR-20: consent is set only when every licence and every acknowledgement was given explicitly.
+    for need, have in (("required_licence_ids", "accepted_licence_ids"),
+                       ("required_acknowledgements", "given_acknowledgements")):
+        n, h = c.get(need), c.get(have)
+        if not isinstance(n, list) or not isinstance(h, list) or not set(n) <= set(h):
+            return "CONSENT_REQUIRED"
+    return None
+
+
 def _p_image_in_consented_plan(c: dict):
-    digest, listed = c.get("image_digest"), c.get("consented_image_digests")
+    # CR-30: whole ImageReferences are compared; a digest alone is never used.
+    digest, listed = c.get("image_reference"), c.get("consented_image_references")
     ok = (isinstance(c.get("consented_plan_id"), str) and isinstance(digest, str)
           and isinstance(listed, list) and digest in listed)
     return None if ok else "CONSENT_REQUIRED"
@@ -247,14 +373,20 @@ def _p_image_present_by_digest(c: dict):
 
 # Reference implementation of the guard predicates of registry/state-machines.json.
 # Each returns None when the predicate holds, otherwise the reason code. Missing inputs fail.
+# (function, requires_consent, guard_context members the function reads; `reads` in the registry
+# must equal the last set, CR-12).
 PREDICATES = {
-    "consent_matches_plan": (_p_consent_matches_plan, True),
-    "plan_has_no_actions": (_p_plan_has_no_actions, False),
-    "step_is_privileged_plan_step": (_p_step_is_privileged_plan_step, True),
-    "privilege_granted": (_p_privilege_granted, False),
-    "image_allowlisted": (_p_image_allowlisted, False),
-    "image_in_consented_plan": (_p_image_in_consented_plan, True),
-    "image_present_by_digest": (_p_image_present_by_digest, False),
+    "consent_matches_plan": (_p_consent_matches_plan, True, {"consented_plan_id", "plan_id"}),
+    "plan_has_no_actions": (_p_plan_has_no_actions, False, {"plan_action_count"}),
+    "step_is_privileged_plan_step": (_p_step_is_privileged_plan_step, True, {"consented_plan_id", "step"}),
+    "privilege_granted": (_p_privilege_granted, False, {"privilege_granted"}),
+    "image_allowlisted": (_p_image_allowlisted, False, {"image_reference", "allowlist"}),
+    "engine_endpoint_local": (_p_engine_endpoint_local, False, {"engine_endpoint", "engine_tcp_listener"}),
+    "terms_accepted": (_p_terms_accepted, False, {"required_licence_ids", "accepted_licence_ids",
+                                                  "required_acknowledgements", "given_acknowledgements"}),
+    "image_in_consented_plan": (_p_image_in_consented_plan, True,
+                                {"consented_plan_id", "image_reference", "consented_image_references"}),
+    "image_present_by_digest": (_p_image_present_by_digest, False, {"image_present"}),
 }
 
 
@@ -271,7 +403,7 @@ def consent_edges(machine_def: dict) -> set:
     """Transitions whose guard contains a predicate that needs consent."""
     out = set()
     for g in machine_def.get("guards", []):
-        if any(PREDICATES.get(p, (None, False))[1] for p in g["checks"]):
+        if any(PREDICATES.get(p, (None, False, set()))[1] for p in g["checks"]):
             out.add((g["from"], g["to"]))
     return out
 
@@ -526,6 +658,11 @@ def check_schema_keywords(schema, root, where: str, report: Report) -> None:
     if not isinstance(schema, dict):
         report.error(where, "schema must be an object or boolean")
         return
+    # SEC-m6: a numeric const/enum always comes with "type": "integer", so 1.0 is rejected by type.
+    numeric = [v for v in ([schema["const"]] if "const" in schema else []) + list(schema.get("enum", []))
+               if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    if numeric and schema.get("type") != "integer":
+        report.error(where, f"numeric const/enum {numeric} needs \"type\": \"integer\" (docs/canonical-json.md 3.3)")
     for key, value in schema.items():
         if key not in SCHEMA_KEYWORDS:
             report.error(where, f"unsupported JSON Schema keyword {key!r} "
@@ -555,6 +692,18 @@ def check_schema_keywords(schema, root, where: str, report: Report) -> None:
                 report.error(where, f"bad pattern {value!r}: {exc}")
 
 
+# Schema semantics fixed for parity (docs/canonical-json.md section 3.3, issue #2). They differ
+# from generic draft 2020-12 validators; --self-test flips them and proves the vectors notice.
+SCHEMA_SEMANTICS = {
+    # "type": "integer" accepts only number tokens without fraction or exponent: 1.0 is rejected,
+    # although draft 2020-12 calls it an integer.
+    "integer_accepts_integral_fraction": False,
+    # const / enum compare numbers by mathematical value: 1.0 equals 1.
+    "numbers_equal_by_value": True,
+}
+_SCHEMA_SEMANTICS_DEFAULT = dict(SCHEMA_SEMANTICS)
+
+
 def _type_ok(instance, name: str) -> bool:
     if name == "object":
         return isinstance(instance, dict)
@@ -563,6 +712,9 @@ def _type_ok(instance, name: str) -> bool:
     if name == "string":
         return isinstance(instance, str)
     if name == "integer":
+        if (SCHEMA_SEMANTICS["integer_accepts_integral_fraction"] and isinstance(instance, float)
+                and instance.is_integer()):
+            return True
         return isinstance(instance, int) and not isinstance(instance, bool)
     if name == "number":
         return isinstance(instance, (int, float)) and not isinstance(instance, bool)
@@ -575,6 +727,8 @@ def _type_ok(instance, name: str) -> bool:
 
 def _json_equal(a, b) -> bool:
     if isinstance(a, bool) or isinstance(b, bool):
+        return type(a) is type(b) and a == b
+    if not SCHEMA_SEMANTICS["numbers_equal_by_value"] and isinstance(a, (int, float)) and isinstance(b, (int, float)):
         return type(a) is type(b) and a == b
     return a == b
 
@@ -699,13 +853,20 @@ def load_repo(report: Report) -> dict:
             report.error(name, f"invalid JSON: {exc}")
             continue
         report.ok()
-        if name.startswith(D_CANONICAL):
-            # Vector inputs are parsed under the hashing restrictions, so that e.g. -0 or 1.0
-            # in an "input" cannot be silently normalised by the generic parser.
+        if name.startswith(("schemas/", "registry/")) and RAW_INVISIBLE.search(text.replace("\n", "")):
+            report.error(name, "contains a raw control or invisible character; write it as a \\uXXXX escape (CR-27)")
+        if name.startswith(HASHABLE_PREFIXES):
+            # Hashed documents and vector inputs are parsed under the hashing restrictions, so that
+            # e.g. -0 or 1.0 in an "input" cannot be silently normalised by the generic parser.
             try:
-                ctx["canonical"][name] = parse_hashable_json(text)
+                parsed = parse_hashable_json(text)
             except CanonicalJsonError as exc:
-                report.error(name, f"vector file violates hashing restrictions: {exc}")
+                report.error(name, f"file violates hashing restrictions: {exc}")
+                continue
+            if name.startswith(D_CANONICAL):
+                ctx["canonical"][name] = parsed
+    # SEC-N3: CODEOWNERS must exist before the allowlist may contain entries.
+    ctx["codeowners"] = any((ROOT / p).is_file() for p in ("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"))
     version = ROOT / "VERSION"
     ctx["version"] = version.read_text(encoding="utf-8").strip() if version.exists() else None
     return ctx
@@ -834,7 +995,8 @@ def check_reason_codes(ctx: dict, report: Report) -> dict:
             report.error(name, f"{rc} maps to exit code {entry['cli_exit_code']}, "
                                "which does not list it in reason_codes")
     for source, codes in (("SPRUT-CLIENT-SPECIFICATION 8.3", SPEC_CLIENT_REASON_CODES),
-                          ("03-CONTRACTS 7", SPEC_CONTRACT_REASON_CODES)):
+                          ("03-CONTRACTS 7", SPEC_CONTRACT_REASON_CODES),
+                          ("sprut-contracts 0.2.0", CONTRACT_REASON_CODES)):
         for rc in codes:
             if rc not in by_code:
                 report.error(name, f"{rc} from {source} is missing")
@@ -898,6 +1060,10 @@ def check_structural_rules(mid: str, pairs: set, terminal: list, machine_def: di
     for eff in spec.get("required_effects", []):
         if eff not in effects:
             report.error(where, f"effect {eff[2]} on {eff[0]} in {eff[1]} is missing")
+    for eff, pid in spec.get("required_effect_checks", {}).items():
+        declared = [e for e in machine_def.get("effects", []) if (e["on"], e["state"], e["action"]) == eff]
+        if not declared or pid not in declared[0].get("checks", []):
+            report.error(where, f"effect {eff[2]} on {eff[0]} in {eff[1]} must check {pid}")
     for (f, t), expected in spec.get("required_on_reject", {}).items():
         declared = {}
         for g in machine_def.get("guards", []):
@@ -936,6 +1102,9 @@ def check_guard_definitions(mid: str, m: dict, pairs: set, reason_codes: dict, w
         for name in p["reads"]:
             if name not in context_names:
                 report.error(where, f"predicate {pid} reads {name}, which is not in guard_context")
+        if set(p["reads"]) != PREDICATES[pid][2]:
+            report.error(where, f"predicate {pid}: reads {sorted(p['reads'])} differ from the inputs of the "
+                                f"reference implementation {sorted(PREDICATES[pid][2])}")
     seen = set()
     for g in m.get("guards", []):
         key = (g["from"], g["to"])
@@ -954,6 +1123,16 @@ def check_guard_definitions(mid: str, m: dict, pairs: set, reason_codes: dict, w
             report.error(where, f"effect on unknown state {e['state']}")
         if e["on"] == "user_consent" and e["state"] not in waiting:
             report.error(where, f"user_consent effect in {e['state']}, which is not a waiting state")
+        needed = set()
+        for pid in e.get("checks", []):
+            if pid not in catalog:
+                report.error(where, f"effect {e['action']} uses undeclared predicate {pid}")
+            needed |= set(catalog.get(pid, {}).get("fails_with", []))
+        on_reject = e.get("on_reject", {})
+        if set(on_reject) != needed:
+            report.error(where, f"effect {e['action']}: on_reject {sorted(on_reject)} must cover exactly {sorted(needed)}")
+        if on_reject and e["state"] not in waiting:
+            report.error(where, f"effect {e['action']}: on_reject stays in {e['state']}, which is not a waiting state")
     for g in m.get("guards", []):
         f, t = g["from"], g["to"]
         on_reject = g.get("on_reject", {})
@@ -1268,6 +1447,46 @@ def check_guard_vectors(ctx: dict, report: Report) -> None:
         report.error(D_GUARDS, f"no guard vectors for machine {mid}")
 
 
+def check_effect_vectors(ctx: dict, report: Report) -> None:
+    machines = ctx.get("machines", {})
+    vecs = {k: v for k, v in ctx["files"].items() if k.startswith(D_EFFECTS)}
+    checked_effects = {(mid, (e["on"], e["state"], e["action"]))
+                       for mid, d in machines.items() for e in d["def"].get("effects", []) if e.get("checks")}
+    outcomes: dict = {}
+    for path, vec in sorted(vecs.items()):
+        if not validate_against(vec, "schemas/effect-vector.schema.json", path, ctx, report):
+            continue
+        mid = vec["machine"]
+        if mid not in machines:
+            report.error(path, f"unknown machine {mid}")
+            continue
+        mdef = machines[mid]["def"]
+        context_names = {c["name"] for c in mdef.get("guard_context", [])}
+        effects = {(e["on"], e["state"], e["action"]): e for e in mdef.get("effects", [])}
+        for i, case in enumerate(vec["cases"]):
+            where = f"cases[{i}] {case['name']}"
+            key = (case["on"], case["state"], case["action"])
+            effect = effects.get(key)
+            if effect is None:
+                report.error(path, f"{where}: no effect {key}")
+                continue
+            for name in case["context"]:
+                if name not in context_names:
+                    report.error(path, f"{where}: context member {name} is not in guard_context")
+            allowed, reason, _ = evaluate_guard(effect.get("checks", []), case["context"])
+            outcomes.setdefault((mid, key), set()).add(allowed)
+            want = case["expected"] == "applied"
+            event = None if allowed else effect.get("on_reject", {}).get(reason, {}).get("event")
+            if allowed != want or (not allowed and (reason, event) != (case.get("reason_code"), case.get("expected_event"))):
+                report.error(path, f"{where}: expected {case['expected']} {case.get('reason_code', '')}".rstrip()
+                             + f", effect checks give {'applied' if allowed else f'{reason}/{event}'}")
+            else:
+                report.ok()
+    for key in sorted(checked_effects):
+        if outcomes.get(key) != {True, False}:
+            report.error(D_EFFECTS, f"effect {key[1]} of {key[0]} needs an applied and a rejected case")
+
+
 def resolve_exit_code(inp: dict, ctx: dict) -> int:
     """Interpret the resolution rules of registry/exit-codes.json (first match wins)."""
     for rule in ctx["exit_rules"]:
@@ -1438,17 +1657,705 @@ def check_event_vectors(ctx: dict, report: Report) -> None:
             report.error(P_EVENT_VECTORS, f"no case with {key[0]}={key[1]}")
 
 
+# --------------------------------------------------------------------------
+# Shared definitions, plan step kinds, InstallationPlan, allowlist, ownership, WSL resources
+# --------------------------------------------------------------------------
+
+def check_shared_defs(ctx: dict, report: Report) -> None:
+    files = ctx["files"]
+    for (copy_file, copy_def), (src_file, src_def) in SHARED_DEFS:
+        try:
+            copied = files[copy_file]["$defs"][copy_def]
+            source = files[src_file]["$defs"][src_def]
+        except (KeyError, TypeError):
+            report.error(copy_file, f"$defs/{copy_def} or its source {src_file} $defs/{src_def} is missing")
+            continue
+        if copied != source:
+            report.error(copy_file, f"$defs/{copy_def} differs from {src_file} $defs/{src_def} (copies must be identical)")
+        else:
+            report.ok()
+    try:
+        d = files[P_IMAGE_SCHEMA]["$defs"]
+        expected = d["repository"]["pattern"][:-1] + "@" + d["image_digest"]["pattern"][1:]
+        if d["image_reference"]["pattern"] != expected:
+            report.error(P_IMAGE_SCHEMA, "image_reference pattern must be the repository pattern, '@' and the "
+                                         "image_digest pattern")
+    except (KeyError, TypeError):
+        report.error(P_IMAGE_SCHEMA, "image_digest, repository or image_reference definition is missing")
+
+
+_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
+
+
+def render_title(template: str, step: dict) -> str:
+    """Title rendering: the only placeholder is {repository}, the repository part of step.image."""
+    image = step.get("image", "")
+    return template.replace("{repository}", image.split("@", 1)[0] if isinstance(image, str) else "")
+
+
+def _pc_source_verified(step, rule, o, reg):
+    if "source" not in step:
+        return None if "source" in rule["optional_members"] else "INTEGRITY_MISMATCH"
+    return None if o.get("downloaded_sha256") == step["source"]["sha256"] else "INTEGRITY_MISMATCH"
+
+
+def _pc_ubuntu_supported(step, rule, o, reg):
+    sup = reg["supported_ubuntu"]
+    ok = o.get("ubuntu_codename") in sup["codenames"] and o.get("architecture") == sup["architecture"]
+    return None if ok else "UNSUPPORTED_PROFILE"
+
+
+def _pc_target_user_current(step, rule, o, reg):
+    user = o.get("process_user")
+    return None if "target_user" in step and user == step["target_user"] else "PLAN_STALE"
+
+
+def _pc_distro_owned(step, rule, o, reg):
+    reg_d = o.get("registered_distro")
+    if not isinstance(reg_d, dict):
+        return "PLAN_STALE"
+    want = step.get("distro", {})
+    ok = reg_d.get("name") == want.get("name") and reg_d.get("base_path") == want.get("base_path")
+    return None if ok else "FOREIGN_RESOURCE"
+
+
+def _pc_wslconfig_unchanged(step, rule, o, reg):
+    current = o.get("wslconfig_sha256")
+    return None if isinstance(current, str) and current == step.get("wslconfig_file", {}).get("sha256") else "PLAN_STALE"
+
+
+def _pc_wsl_restart_confirmed(step, rule, o, reg):
+    ok = o.get("sprut_drained") is True and o.get("wsl_restart_confirmed") is True
+    return None if ok else "WSL_RESTART_REQUIRED"
+
+
+# Reference implementation of the execution preconditions of registry/plan-step-kinds.json:
+# id -> (function(step, kind rule, observed facts, registry), observed facts it reads).
+STEP_PRECONDITIONS = {
+    "source_verified": (_pc_source_verified, {"downloaded_sha256"}),
+    "ubuntu_supported": (_pc_ubuntu_supported, {"ubuntu_codename", "architecture"}),
+    "target_user_current": (_pc_target_user_current, {"process_user"}),
+    "distro_owned": (_pc_distro_owned, {"registered_distro"}),
+    "wslconfig_unchanged": (_pc_wslconfig_unchanged, {"wslconfig_sha256"}),
+    "wsl_restart_confirmed": (_pc_wsl_restart_confirmed, {"sprut_drained", "wsl_restart_confirmed"}),
+}
+
+
+def check_commands(kind: str, platform: str, ops: list, members: set, prule: dict, where: str, report: Report) -> None:
+    """SEC-m1: fixed argv templates, absolute programs, no shells, only declared placeholders."""
+    where = f"{where} commands.{platform}"
+    downloaded, verified = set(), set()
+    for i, op in enumerate(ops):
+        w = f"{where}[{i}]"
+        when = op.get("when")
+        if when is not None and "source" not in members:
+            report.error(w, "`when` is only for kinds with a source")
+        if "argv" in op:
+            prog = op["argv"][0]
+            host = prog.startswith("{system32}\\")
+            if platform == "linux" and not prog.startswith("/"):
+                report.error(w, f"program {prog!r} must be an absolute Linux path")
+            if platform == "windows" and not (host or prog.startswith("/")):
+                report.error(w, f"program {prog!r} must start with {{system32}}\\ or be a Linux path in the Sprut distribution")
+            if platform == "windows" and prule.get("privileged") and not host:
+                report.error(w, "an elevated step runs only Windows system programs")
+            base = prog.replace("\\", "/").rsplit("/", 1)[-1].lower()
+            if base in FORBIDDEN_PROGRAMS:
+                report.error(w, f"program {base} is not allowed (no shell, interpreter, downloader or sudo in templates)")
+            for j, arg in enumerate(op["argv"]):
+                names = _PLACEHOLDER.findall(arg)
+                if j == 0:
+                    if names not in ([], ["system32"]) or (names and not host):
+                        report.error(w, "argv[0] may only use {system32} as its prefix")
+                    continue
+                for n in names:
+                    if arg != "{" + n + "}":
+                        report.error(w, f"placeholder {{{n}}} must be a whole argument")
+                    if n not in SPEC_PLACEHOLDERS - {"system32"}:
+                        report.error(w, f"unknown placeholder {{{n}}}")
+                    if n in PLACEHOLDER_MEMBER and PLACEHOLDER_MEMBER[n] not in members:
+                        report.error(w, f"{{{n}}} needs step member {PLACEHOLDER_MEMBER[n]}")
+                    if n == "verified_file" and when not in verified:
+                        report.error(w, "{verified_file} is used without a preceding verify_source (SEC-N1)")
+        elif "install_file" in op:
+            names = set(_PLACEHOLDER.findall(op["install_file"]["content"]))
+            if names - {"codename"}:
+                report.error(w, f"install_file content may only use {{codename}}, found {sorted(names)}")
+        else:
+            action = op["client_action"]
+            need = {"download_source": "source", "verify_source": "source", "engine_pull": "image",
+                    "edit_wslconfig": "wslconfig"}[action]
+            if need not in members:
+                report.error(w, f"{action} needs step member {need}")
+            if action == "download_source":
+                downloaded.add(when)
+            if action == "verify_source":
+                if when not in downloaded:
+                    report.error(w, "verify_source needs a preceding download_source")
+                verified.add(when)
+
+
+def check_step_kinds(ctx: dict, report: Report) -> None:
+    name = P_STEP_KINDS
+    data = ctx["files"].get(name)
+    if data is None:
+        report.error(name, "missing")
+        return
+    if not validate_against(data, "schemas/plan-step-kinds.schema.json", name, ctx, report):
+        return
+    if {p["name"] for p in data["placeholders"]} != SPEC_PLACEHOLDERS:
+        report.error(name, f"placeholders must be {sorted(SPEC_PLACEHOLDERS)}")
+    catalog = {}
+    bootstrap = ctx.get("machines", {}).get("bootstrap")
+    for p in data["preconditions"]:
+        where = f"{name}: precondition {p['id']}"
+        catalog[p["id"]] = p
+        check_localized(p, "description", where, report)
+        ref = STEP_PRECONDITIONS.get(p["id"])
+        if ref is None:
+            report.error(where, "no reference implementation in tools/validate.py")
+            continue
+        if set(p["reads"]) != ref[1]:
+            report.error(where, f"reads must be {sorted(ref[1])}")
+        if set(p["fails_with"]) != set(p["on_reject"]):
+            report.error(where, "on_reject must cover exactly fails_with")
+        for rc, entry in p["on_reject"].items():
+            if rc not in ctx.get("reason_codes", {}):
+                report.error(where, f"unknown reason code {rc}")
+            if bootstrap is not None and ("INSTALLING", entry["to"]) not in bootstrap["pairs"]:
+                report.error(where, f"on_reject {rc} goes to {entry['to']}, but INSTALLING->{entry['to']} is not a transition")
+    kinds: dict = {}
+    for entry in data["step_kinds"]:
+        kind = entry["kind"]
+        where = f"{name}: {kind}"
+        if kind in kinds:
+            report.error(where, "duplicate kind")
+        kinds[kind] = entry
+        check_localized(entry, "title", where, report)
+        privileged = {p: r["privileged"] for p, r in entry["platforms"].items()}
+        if kind in SPEC_STEP_KINDS and privileged != SPEC_STEP_KINDS[kind]:
+            report.error(where, f"platforms/privileged {privileged} differ from the agreed {SPEC_STEP_KINDS[kind]}")
+        elevated = entry.get("windows_elevated_step")
+        if privileged.get("windows"):
+            if elevated != kind.upper() or elevated != SPEC_WINDOWS_ELEVATED.get(kind):
+                report.error(where, f"windows_elevated_step must be {kind.upper()} and part of the elevated "
+                                    f"vocabulary {sorted(SPEC_WINDOWS_ELEVATED.values())}")
+        elif elevated is not None:
+            report.error(where, "windows_elevated_step is only for kinds privileged on windows")
+        required, optional = set(entry["required_members"]), set(entry["optional_members"])
+        if required & optional:
+            report.error(where, f"members both required and optional: {sorted(required & optional)}")
+        members = required | optional
+        if ("image" in members) != (kind == "image_pull") or ("image" in optional):
+            report.error(where, "only image_pull has an image, and it is required there")
+        if ("source" in required) != (kind in SPEC_SOURCE_REQUIRED):
+            report.error(where, f"source must be required exactly for {sorted(SPEC_SOURCE_REQUIRED)}")
+        if bool(entry["source_url_prefixes"]) != ("source" in members):
+            report.error(where, "source_url_prefixes must be non-empty exactly when source is required or optional")
+        for flag in STEP_FLAGS:
+            rule = entry["flags"][flag]
+            if (kind, flag) in SPEC_FLAG_ALWAYS and rule != "always":
+                report.error(where, f"{flag} must be always")
+            if flag == "requires_reboot" and rule != ("may" if kind in SPEC_REBOOT_MAY else "never"):
+                report.error(where, f"requires_reboot must be {'may' if kind in SPEC_REBOOT_MAY else 'never'}")
+            if flag != "requires_reboot" and (kind, flag) not in SPEC_FLAG_ALWAYS and rule != "never":
+                report.error(where, f"{flag} must be never")
+        for tkey in ("title", "title_without_source"):
+            if tkey not in entry:
+                continue
+            check_localized(entry, tkey, where, report)
+            holders = {lang: set(_PLACEHOLDER.findall(entry[tkey][lang])) for lang in ("ru", "en")}
+            for lang, found in holders.items():
+                allowed = {"repository"} if "image" in required else set()
+                if found - allowed:
+                    report.error(where, f"{tkey}.{lang} uses placeholders {sorted(found - allowed)} (allowed: {sorted(allowed)})")
+            if holders["ru"] != holders["en"]:
+                report.error(where, f"{tkey}.ru and {tkey}.en use different placeholders")
+        if ("title_without_source" in entry) != ("source" in optional):
+            report.error(where, "title_without_source must be present exactly when source is optional (SEC-A1)")
+        if entry.get("acknowledgement") != SPEC_ACKNOWLEDGEMENTS.get(kind):
+            report.error(where, f"acknowledgement must be {SPEC_ACKNOWLEDGEMENTS.get(kind)}")
+        if entry["licence_required"] != (kind in SPEC_LICENCE_REQUIRED):
+            report.error(where, f"licence_required must be {kind in SPEC_LICENCE_REQUIRED}")
+        if entry["preconditions"] != SPEC_STEP_PRECONDITIONS.get(kind, []):
+            report.error(where, f"preconditions must be {SPEC_STEP_PRECONDITIONS.get(kind, [])}")
+        for pid in entry["preconditions"]:
+            if pid not in catalog:
+                report.error(where, f"precondition {pid} is not declared")
+        for prefix in entry["source_url_prefixes"]:
+            if not PREFIX_SHAPE.fullmatch(prefix):
+                report.error(where, f"source prefix {prefix!r} must match {PREFIX_SHAPE.pattern}")
+        if set(entry["commands"]) != set(entry["platforms"]):
+            report.error(where, "commands must be given for exactly the kind's platforms")
+        for platform, ops in entry["commands"].items():
+            check_commands(kind, platform, ops, members, entry["platforms"].get(platform, {}), where, report)
+        env = entry.get("environment", {})
+        if any(ALLOWED_ENVIRONMENT.get(k) != v for k, v in env.items()):
+            report.error(where, f"environment may only set {ALLOWED_ENVIRONMENT}")
+        uses_apt = any(op.get("argv", [""])[0] == "/usr/bin/apt-get" for ops in entry["commands"].values() for op in ops)
+        if uses_apt != (env == ALLOWED_ENVIRONMENT):
+            report.error(where, "kinds that run apt-get declare environment DEBIAN_FRONTEND=noninteractive, others none")
+    if set(kinds) != set(SPEC_STEP_KINDS):
+        report.error(name, f"step kinds differ from the agreed closed vocabulary: extra "
+                           f"{sorted(set(kinds) - set(SPEC_STEP_KINDS))}, missing {sorted(set(SPEC_STEP_KINDS) - set(kinds))}")
+    report.ok()
+    ctx["step_kinds"] = kinds
+    ctx["step_registry"] = data
+
+
+class ContractError(Exception):
+    """A document rejected by one of the documented categories (docs/installation-plan.md section 6)."""
+
+    def __init__(self, kind: str, detail: str) -> None:
+        super().__init__(f"{kind}: {detail}")
+        self.kind = kind
+
+
+def validate_plan(value, ctx: dict) -> dict:
+    """Reference InstallationPlan check. Returns the derived guard inputs or raises ContractError."""
+    try:
+        hashed = object_hash_input(value, "installation_plan")
+    except CanonicalJsonError as exc:
+        raise ContractError(exc.kind, str(exc)) from exc
+    schema = ctx["schemas"].get(P_PLAN_SCHEMA)
+    kinds = ctx.get("step_kinds")
+    if schema is None or kinds is None:
+        raise ContractError("SCHEMA_VIOLATION", "plan schema or step-kind registry unavailable")
+    errs = schema_errors(value, schema, schema)
+    if errs:
+        raise ContractError("SCHEMA_VIOLATION", errs[0])
+    try:
+        plan_id = sha256_hex(canonicalize(hashed))
+    except CanonicalJsonError as exc:
+        raise ContractError(exc.kind, str(exc)) from exc
+    if value.get("hash") != plan_id:
+        raise ContractError("HASH_MISMATCH", f"stored {value.get('hash')}, recomputed {plan_id}")
+    platform = value["platform"]
+    for summary in ("current_state", "target_state"):
+        for component in value[summary]:
+            if STATE_COMPONENT_PLATFORMS.get(component, platform) != platform:
+                raise ContractError("STATE_NOT_ON_PLATFORM", f"{summary}.{component} on {platform}")
+    images: dict = {}
+    for ref in value["images"]:
+        digest = ref.split("@", 1)[1]
+        if digest in images:
+            raise ContractError("DUPLICATE_IMAGE", digest)
+        images[digest] = ref
+    licences = set()
+    for lic in value["licences"]:
+        if lic["id"] in licences:
+            raise ContractError("DUPLICATE_LICENCE", lic["id"])
+        licences.add(lic["id"])
+    ids: set = set()
+    pulls: list = []
+    pulled_refs: list = []
+    privileged: list = []
+    elevated: list = []
+    acknowledgements: list = []
+    total = 0
+    steps = value["steps"]
+    for index, step in enumerate(steps):
+        sid, kind = step["id"], step["kind"]
+        if sid in ids:
+            raise ContractError("DUPLICATE_STEP_ID", sid)
+        ids.add(sid)
+        rule = kinds.get(kind)
+        if rule is None:
+            raise ContractError("UNKNOWN_STEP_KIND", kind)
+        prule = rule["platforms"].get(platform)
+        if prule is None:
+            raise ContractError("STEP_NOT_ON_PLATFORM", f"{kind} on {platform}")
+        if step["privileged"] != prule["privileged"]:
+            raise ContractError("PRIVILEGE_MISMATCH", f"{sid}: {kind} on {platform} has privileged={prule['privileged']}")
+        for flag in STEP_FLAGS:
+            want = rule["flags"][flag]
+            if (want == "never" and step[flag]) or (want == "always" and not step[flag]):
+                raise ContractError("FLAG_MISMATCH", f"{sid}: {flag} must be {want}")
+        allowed = set(rule["required_members"]) | set(rule["optional_members"])
+        for member in STEP_MEMBERS:
+            if member in step and member not in allowed:
+                raise ContractError("STEP_MEMBER_NOT_ALLOWED", f"{sid}: {kind} has no {member}")
+            if member in rule["required_members"] and member not in step:
+                raise ContractError("STEP_MEMBER_MISSING", f"{sid}: {kind} needs {member}")
+        if "source" in step and not any(step["source"]["url"].startswith(p) for p in rule["source_url_prefixes"]):
+            raise ContractError("SOURCE_NOT_OFFICIAL", f"{sid}: {step['source']['url']}")
+        if "image" in step:
+            digest = step["image"].split("@", 1)[1]
+            if images.get(digest) != step["image"]:
+                raise ContractError("IMAGE_NOT_LISTED", f"{sid}: {step['image']}")
+            if digest in pulls:
+                raise ContractError("DUPLICATE_PULL", f"{sid}: {digest}")
+            pulls.append(digest)
+            pulled_refs.append(step["image"])
+        # SEC-A1: without its optional source the title states that the download is unverified.
+        template = rule["title"] if "source" in step or "title_without_source" not in rule else rule["title_without_source"]
+        for lang in ("ru", "en"):
+            if step["title"][lang] != render_title(template[lang], step):
+                raise ContractError("TITLE_MISMATCH", f"{sid}: title.{lang} is not the template of {kind}")
+        for lic in step.get("licence_ids", []):
+            if lic not in licences:
+                raise ContractError("LICENCE_UNKNOWN", f"{sid}: {lic}")
+        if RULE_SWITCHES["licence_required"] and rule["licence_required"] and not step.get("licence_ids"):
+            raise ContractError("LICENCE_MISSING", f"{sid}: {kind} needs a licence")
+        if RULE_SWITCHES["unregister_pairing"] and kind == "unregister_distro" and (index + 1 >= len(steps) or steps[index + 1]["kind"] != "import_distro"):
+            raise ContractError("UNPAIRED_UNREGISTER", f"{sid}: must be immediately followed by import_distro")
+        if RULE_SWITCHES["wslconfig_replaced"] and "wslconfig_file" in step:
+            replaced, written = step["wslconfig_file"]["replaced"], step["wslconfig"]
+            if not set(replaced) <= set(written) or (step["wslconfig_file"]["sha256"] == "absent" and replaced):
+                raise ContractError("WSLCONFIG_REPLACED_MISMATCH", f"{sid}: replaced values must be of written keys of an existing file")
+        if "acknowledgement" in rule and rule["acknowledgement"] not in acknowledgements:
+            acknowledgements.append(rule["acknowledgement"])
+        total += step["estimated_bytes"]
+        if step["privileged"]:
+            privileged.append(sid)
+            if platform == "windows":
+                elevated.append({"step_id": sid, "elevated_step": rule["windows_elevated_step"]})
+    # SEC-C1: Linux plans state how the user reaches the engine; the group step matches that choice.
+    access = value.get("docker_access")
+    has_group_step = any(s["kind"] == "add_user_to_docker_group" for s in steps)
+    if not RULE_SWITCHES["docker_access"]:
+        pass
+    elif platform == "windows":
+        if access is not None:
+            raise ContractError("DOCKER_ACCESS_MISMATCH", "docker_access is Linux only")
+    elif access is None or (access == "none" and has_group_step) or \
+            (access == "docker_group" and not has_group_step and value["current_state"].get("docker_group") != "member"):
+        raise ContractError("DOCKER_ACCESS_MISMATCH", f"docker_access {access!r} does not match the steps")
+    if total != value["disk_estimate_bytes"]:
+        raise ContractError("DISK_ESTIMATE_MISMATCH", f"sum of estimated_bytes {total} != {value['disk_estimate_bytes']}")
+    return {"plan_id": plan_id, "plan_action_count": len(steps), "consented_image_references": pulled_refs,
+            "privileged_step_ids": privileged, "windows_elevated_steps": elevated,
+            "required_licence_ids": [lic["id"] for lic in value["licences"]],
+            "required_acknowledgements": acknowledgements}
+
+
+def evaluate_preconditions(step: dict, platform: str, observed: dict, ctx: dict):
+    """(allowed, reason_code, next_state, event) for the execution preconditions of a step."""
+    reg = ctx["step_registry"]
+    rule = ctx["step_kinds"][step["kind"]]
+    if platform not in rule["platforms"]:
+        raise ContractError("STEP_NOT_ON_PLATFORM", f"{step['kind']} on {platform}")
+    catalog = {p["id"]: p for p in reg["preconditions"]}
+    for pid in rule["preconditions"]:
+        reason = STEP_PRECONDITIONS[pid][0](step, rule, observed, reg)
+        if reason is not None:
+            entry = catalog[pid]["on_reject"].get(reason, {})
+            return False, reason, entry.get("to"), entry.get("event")
+    return True, None, None, None
+
+
+def check_precondition_vectors(ctx: dict, report: Report) -> None:
+    vec = ctx["files"].get(P_PRECONDITION_VECTORS)
+    if vec is None or "step_kinds" not in ctx:
+        report.error(P_PRECONDITION_VECTORS, "vectors or step-kind registry missing")
+        return
+    if not validate_against(vec, "schemas/step-precondition-vector.schema.json", P_PRECONDITION_VECTORS, ctx, report):
+        return
+    failed, rejections = set(), set()
+    for i, case in enumerate(vec["cases"]):
+        where = f"cases[{i}] {case['name']}"
+        if case["step"].get("kind") not in ctx["step_kinds"]:
+            report.error(P_PRECONDITION_VECTORS, f"{where}: unknown step kind")
+            continue
+        try:
+            allowed, reason, nxt, event = evaluate_preconditions(case["step"], case["platform"], case["observed"], ctx)
+        except (ContractError, KeyError, TypeError, AttributeError) as exc:
+            report.error(P_PRECONDITION_VECTORS, f"{where}: {exc!r}")
+            continue
+        got = ("allowed",) if allowed else ("rejected", reason, nxt, event)
+        want = ("allowed",) if case["expected"] == "allowed" else (
+            "rejected", case.get("reason_code"), case.get("expected_next_state"), case.get("expected_event"))
+        if got != want:
+            report.error(P_PRECONDITION_VECTORS, f"{where}: expected {want}, preconditions give {got}")
+            continue
+        if not allowed:
+            for pid in ctx["step_kinds"][case["step"]["kind"]]["preconditions"]:
+                if STEP_PRECONDITIONS[pid][0](case["step"], ctx["step_kinds"][case["step"]["kind"]],
+                                              case["observed"], ctx["step_registry"]) == reason:
+                    failed.add(pid)
+                    rejections.add((pid, reason))
+                    break
+        report.ok()
+    for p in ctx["step_registry"]["preconditions"]:
+        for rc in p["fails_with"]:
+            if (p["id"], rc) not in rejections:
+                report.error(P_PRECONDITION_VECTORS, f"no case where precondition {p['id']} fails with {rc}")
+
+
+def check_plan_vectors(ctx: dict, report: Report) -> None:
+    vecs = {k: v for k, v in ctx["files"].items() if k.startswith(D_PLANS)}
+    if not vecs:
+        report.error(D_PLANS, "no vectors found")
+        return
+    names = set()
+    seen_errors = set()
+    valid_platforms = set()
+    for path, vec in sorted(vecs.items()):
+        if not validate_against(vec, "schemas/installation-plan-vector.schema.json", path, ctx, report):
+            continue
+        if vec["name"] in names or Path(path).stem != vec["name"]:
+            report.error(path, f"vector name {vec['name']!r} must be unique and equal the file name")
+        names.add(vec["name"])
+        try:
+            derived = validate_plan(vec["document"], ctx)
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
+            # Only reachable when the schema no longer guarantees the shape the rules rely on.
+            report.error(path, f"plan rules failed on a document the schema accepted: {exc!r}")
+            continue
+        except ContractError as exc:
+            if vec["expected"] == "valid":
+                report.error(path, f"expected valid, got {exc}")
+            elif exc.kind != vec["expected_error"]:
+                report.error(path, f"expected {vec['expected_error']}, got {exc}")
+            else:
+                seen_errors.add(exc.kind)
+                report.ok()
+            continue
+        if vec["expected"] == "invalid":
+            report.error(path, f"plan was accepted, expected {vec['expected_error']}")
+        elif derived != vec["derived"]:
+            report.error(path, f"derived guard inputs differ:\n  expected {vec['derived']}\n  computed {derived}")
+        else:
+            valid_platforms.add(vec["document"]["platform"])
+            report.ok()
+    for platform in PLATFORMS:
+        if platform not in valid_platforms:
+            report.error(D_PLANS, f"no valid {platform} plan vector")
+    categories = set(ctx["schemas"].get("schemas/installation-plan-vector.schema.json", {})
+                     .get("properties", {}).get("expected_error", {}).get("enum", []))
+    missing = categories - seen_errors - {"INVALID_JSON", "INVALID_HASH_MEMBER"}  # covered by canonical vectors
+    if missing:
+        report.error(D_PLANS, f"no invalid vector for {sorted(missing)}")
+
+
+def _semver(text: str) -> tuple:
+    """CR-21: (MAJOR, MINOR, PATCH, 0 for a pre-release / 1 for a release). Pre-release identifiers are
+    not compared further; a pre-release is lower than its release."""
+    core, _, pre = text.partition("-")
+    return tuple(int(p) for p in core.split(".")) + (0 if pre else 1,)
+
+
+def allowlist_digests(value, ctx: dict, client_version: str) -> list:
+    """Reference allowlist reader: the guard input `allowlist` for a client, or ContractError."""
+    try:
+        object_hash_input(value, "image_allowlist")
+    except CanonicalJsonError as exc:
+        raise ContractError(exc.kind, str(exc)) from exc
+    schema = ctx["schemas"].get(P_ALLOWLIST_SCHEMA)
+    if schema is None:
+        raise ContractError("SCHEMA_VIOLATION", "allowlist schema unavailable")
+    errs = schema_errors(value, schema, schema)
+    if errs:
+        raise ContractError("SCHEMA_VIOLATION", errs[0])
+    seen = set()
+    for entry in value["entries"]:
+        if entry["digest"] in seen:
+            raise ContractError("DUPLICATE_DIGEST", entry["digest"])
+        seen.add(entry["digest"])
+    client = _semver(client_version)
+    return [e["repository"] + "@" + e["digest"] for e in value["entries"]
+            if _semver(e["min_client_version"]) <= client
+            and ("max_client_version" not in e or client <= _semver(e["max_client_version"]))]
+
+
+def check_allowlist(ctx: dict, report: Report) -> None:
+    data = ctx["files"].get(P_ALLOWLIST)
+    if data is None:
+        report.error(P_ALLOWLIST, "missing")
+    else:
+        try:
+            allowlist_digests(data, ctx, "0.0.0")
+            if data.get("entries") and not ctx.get("codeowners"):
+                report.error(P_ALLOWLIST, "a non-empty allowlist requires CODEOWNERS, branch protection and signed tags "
+                                          "(SECURITY.md); CODEOWNERS is missing")
+            else:
+                report.ok()
+        except ContractError as exc:
+            report.error(P_ALLOWLIST, f"bundled allowlist is invalid: {exc}")
+    vec = ctx["files"].get(P_ALLOWLIST_VECTORS)
+    if vec is None:
+        report.error(P_ALLOWLIST_VECTORS, "missing")
+        return
+    if not validate_against(vec, "schemas/image-allowlist-vector.schema.json", P_ALLOWLIST_VECTORS, ctx, report):
+        return
+    for i, case in enumerate(vec["cases"]):
+        where = f"cases[{i}] {case['name']}"
+        try:
+            got = allowlist_digests(case["document"], ctx, case["client_version"])
+        except ContractError as exc:
+            if case["expected"] != "invalid" or exc.kind != case["expected_error"]:
+                report.error(P_ALLOWLIST_VECTORS, f"{where}: expected {case['expected']} "
+                                                  f"{case.get('expected_error', '')}".rstrip() + f", got {exc}")
+            else:
+                report.ok()
+            continue
+        if case["expected"] == "invalid":
+            report.error(P_ALLOWLIST_VECTORS, f"{where}: accepted, expected {case['expected_error']}")
+        elif got != case["allowlisted_references"]:
+            report.error(P_ALLOWLIST_VECTORS, f"{where}: allowlist {got}, expected {case['allowlisted_references']}")
+        else:
+            report.ok()
+
+
+def is_owned(labels: dict, profile: str, reg: dict) -> bool:
+    for label in reg["labels"]:
+        rule = label["owned_when"]
+        if rule == "not_checked":
+            continue
+        value = labels.get(label["key"])
+        if value is None or (rule == "equals_value" and value != label["value"]) \
+                or (rule == "equals_current_profile" and value != profile):
+            return False
+    return True
+
+
+def is_adoptable(case: dict, profile: str, reg: dict) -> bool:
+    """SEC-m5: reuse an existing labelled resource only if journaled and inspected clean."""
+    inspect = case["inspect"]
+    return (is_owned(case["labels"], profile, reg) and (case["in_journal"] is True or not RULE_SWITCHES["adoption_needs_journal"])
+            and inspect.get("image_allowlisted") is True and inspect.get("host_bind_mounts") is False
+            and inspect.get("privileged") is False and inspect.get("docker_socket_mounted") is False)
+
+
+def caller_labels_accepted(labels: dict, reg: dict) -> bool:
+    ns = reg["label_namespace"]
+    for key, value in labels.items():
+        if key == ns or key.startswith(ns + "."):
+            return False
+        if not pattern_matches(reg["label_charset_pattern"], key) or not pattern_matches(reg["label_charset_pattern"], value):
+            return False
+    return True
+
+
+def check_ownership(ctx: dict, report: Report) -> None:
+    reg = ctx["files"].get(P_OWNERSHIP)
+    if reg is None:
+        report.error(P_OWNERSHIP, "missing")
+        return
+    if not validate_against(reg, "schemas/ownership.schema.json", P_OWNERSHIP, ctx, report):
+        return
+    if reg["label_namespace"] != SPEC_LABEL_NAMESPACE:
+        report.error(P_OWNERSHIP, f"label_namespace must be {SPEC_LABEL_NAMESPACE}")
+    if set(reg["labelled_resources"]) != SPEC_LABELLED_RESOURCES:
+        report.error(P_OWNERSHIP, f"labelled_resources must be {sorted(SPEC_LABELLED_RESOURCES)} (CF22)")
+    charset = reg["label_charset_pattern"]
+    patterns_ok = True
+    for pat in [charset] + [l["value_pattern"] for l in reg["labels"]]:
+        if not (pat.startswith("^") and pat.endswith("$") and not pat.endswith("\\$")):
+            report.error(P_OWNERSHIP, f"pattern {pat!r} must be anchored with ^...$")
+            patterns_ok = False
+            continue
+        try:
+            re.compile(pat)
+        except re.error as exc:
+            report.error(P_OWNERSHIP, f"bad pattern {pat!r}: {exc}")
+            patterns_ok = False
+    if not patterns_ok:
+        return
+    names, keys = set(), set()
+    checks = {}
+    for label in reg["labels"]:
+        where = f"{P_OWNERSHIP}: label {label['name']}"
+        check_localized(label, "description", where, report)
+        if label["key"] != f"{reg['label_namespace']}.{label['name']}":
+            report.error(where, "key must be label_namespace + '.' + name")
+        if label["name"] in names or label["key"] in keys:
+            report.error(where, "duplicate label")
+        names.add(label["name"])
+        keys.add(label["key"])
+        if not pattern_matches(charset, label["key"]):
+            report.error(where, "key does not match label_charset_pattern")
+        if "value" in label and not (pattern_matches(label["value_pattern"], label["value"])
+                                     and pattern_matches(charset, label["value"])):
+            report.error(where, "value does not match value_pattern / label_charset_pattern")
+        if label["required"]:
+            checks[label["name"]] = (label["owned_when"], label.get("value"))
+    expected = {"managed": ("equals_value", "true"), "profile": ("equals_current_profile", None)}
+    for lname, rule in expected.items():
+        if checks.get(lname) != rule:
+            report.error(P_OWNERSHIP, f"label {lname} must be required with owned_when {rule[0]}"
+                                      + (f" and value {rule[1]}" if rule[1] else ""))
+    for rule in reg["rules"]:
+        check_localized(rule, "text", f"{P_OWNERSHIP}: rule {rule['id']}", report)
+    report.ok()
+    vec = ctx["files"].get(P_OWNERSHIP_VECTORS)
+    if vec is None:
+        report.error(P_OWNERSHIP_VECTORS, "missing")
+        return
+    if not validate_against(vec, "schemas/ownership-vector.schema.json", P_OWNERSHIP_VECTORS, ctx, report):
+        return
+    for i, case in enumerate(vec["ownership_cases"]):
+        got = is_owned(case["labels"], vec["profile"], reg)
+        if got != case["owned"]:
+            report.error(P_OWNERSHIP_VECTORS, f"ownership_cases[{i}] {case['name']}: expected owned={case['owned']}")
+        else:
+            report.ok()
+    for i, case in enumerate(vec["caller_label_cases"]):
+        got = caller_labels_accepted(case["labels"], reg)
+        if got != case["accepted"]:
+            report.error(P_OWNERSHIP_VECTORS, f"caller_label_cases[{i}] {case['name']}: expected accepted={case['accepted']}")
+        else:
+            report.ok()
+    for i, case in enumerate(vec["adoption_cases"]):
+        if is_adoptable(case, vec["profile"], reg) != case["adoptable"]:
+            report.error(P_OWNERSHIP_VECTORS, f"adoption_cases[{i}] {case['name']}: expected adoptable={case['adoptable']}")
+        else:
+            report.ok()
+    if "adoption" not in {r["id"] for r in reg["rules"]}:
+        report.error(P_OWNERSHIP, "rule adoption (SEC-m5) is missing")
+    for field, key in (("ownership_cases", "owned"), ("caller_label_cases", "accepted"), ("adoption_cases", "adoptable")):
+        if {c[key] for c in vec[field]} != {True, False}:
+            report.error(P_OWNERSHIP_VECTORS, f"{field} needs both {key}=true and {key}=false cases")
+
+
+def check_wsl_resources(ctx: dict, report: Report) -> None:
+    vec = ctx["files"].get(P_WSL_VECTORS)
+    schema = ctx["schemas"].get(P_WSL_SCHEMA)
+    if vec is None or schema is None:
+        report.error(P_WSL_VECTORS, "vectors or schema missing")
+        return
+    if not validate_against(vec, "schemas/wsl-resources-vector.schema.json", P_WSL_VECTORS, ctx, report):
+        return
+    for i, case in enumerate(vec["cases"]):
+        errs = schema_errors(case["value"], schema, schema)
+        if (not errs) != case["valid"]:
+            report.error(P_WSL_VECTORS, f"cases[{i}] {case['name']}: expected valid={case['valid']}, got "
+                                        + ("; ".join(errs) if errs else "accepted"))
+        else:
+            report.ok()
+    if {c["valid"] for c in vec["cases"]} != {True, False}:
+        report.error(P_WSL_VECTORS, "needs both valid and invalid cases")
+    plan_schema = ctx["schemas"].get(P_PLAN_SCHEMA, {})
+    display = plan_schema.get("$defs", {}).get("display_text")
+    for i, case in enumerate(vec["current_value_cases"]):
+        # CR-29: a current value is shown in wslconfig_file.replaced only if it is valid display text.
+        got = "replaced" if display is not None and not schema_errors(case["current_text"], display, plan_schema) \
+            else "WSL_CONFIG_CONFLICT"
+        if got != case["outcome"]:
+            report.error(P_WSL_VECTORS, f"current_value_cases[{i}] {case['name']}: expected {case['outcome']}, got {got}")
+        else:
+            report.ok()
+
+
 def run_checks(ctx: dict, report: Report) -> None:
     check_version(ctx, report)
     check_schemas(ctx, report)
+    check_shared_defs(ctx, report)
     check_exit_codes(ctx, report)
     check_reason_codes(ctx, report)
     check_state_machines(ctx, report)
+    check_step_kinds(ctx, report)
     check_canonical_vectors(ctx, report)
     check_transition_vectors(ctx, report)
     check_guard_vectors(ctx, report)
+    check_effect_vectors(ctx, report)
     check_exit_vectors(ctx, report)
     check_event_vectors(ctx, report)
+    check_plan_vectors(ctx, report)
+    check_precondition_vectors(ctx, report)
+    check_allowlist(ctx, report)
+    check_ownership(ctx, report)
+    check_wsl_resources(ctx, report)
 
 
 # --------------------------------------------------------------------------
@@ -1602,6 +2509,277 @@ def _hash_vector_without_kind(ctx):
     vec["input"].pop("kind")
 
 
+def _step_kind(ctx, kind):
+    return next(k for k in ctx["files"][P_STEP_KINDS]["step_kinds"] if k["kind"] == kind)
+
+
+def _plan_vector(ctx, name):
+    return ctx["files"][D_PLANS + name + ".json"]
+
+
+def _reads_without_consent(ctx):
+    for p in _machine(ctx, "bootstrap")["guard_predicates"]:
+        if p["id"] == "step_is_privileged_plan_step":
+            p["reads"] = ["step"]
+
+
+def _uac_step_unprivileged(ctx):
+    _step_kind(ctx, "enable_wsl_features")["platforms"]["windows"]["privileged"] = False
+    _step_kind(ctx, "enable_wsl_features").pop("windows_elevated_step")
+
+
+def _import_distro_privileged(ctx):
+    _step_kind(ctx, "import_distro")["platforms"]["windows"]["privileged"] = True
+    _step_kind(ctx, "import_distro")["windows_elevated_step"] = "IMPORT_DISTRO"
+
+
+def _linux_apt_unprivileged(ctx):
+    _step_kind(ctx, "apt_add_docker_repo")["platforms"]["linux"]["privileged"] = False
+
+
+def _open_vocabulary(ctx):
+    entry = copy.deepcopy(_step_kind(ctx, "start_engine"))
+    entry["kind"] = "run_script"
+    ctx["files"][P_STEP_KINDS]["step_kinds"].append(entry)
+
+
+def _image_on_install_step(ctx):
+    _step_kind(ctx, "install_docker_engine")["optional_members"].append("image")
+
+
+def _rootfs_source_optional(ctx):
+    k = _step_kind(ctx, "import_distro")
+    k["required_members"].remove("source")
+    k["optional_members"].append("source")
+
+
+def _prefix_without_path(ctx):
+    _step_kind(ctx, "apt_add_docker_repo")["source_url_prefixes"] = ["https://download.docker.com"]
+
+
+def _relogin_may(ctx):
+    _step_kind(ctx, "add_user_to_docker_group")["flags"]["requires_relogin"] = "may"
+
+
+def _elevated_renamed(ctx):
+    _step_kind(ctx, "update_wsl")["windows_elevated_step"] = "UPGRADE_WSL"
+
+
+def _title_template_changed(ctx):
+    _step_kind(ctx, "install_docker_engine")["title"]["en"] = "Install Docker"
+
+
+def _free_placeholder(ctx):
+    _step_kind(ctx, "install_docker_engine")["title"]["en"] = "Install {package}"
+
+
+def _plan_allows_unknown_members(ctx):
+    ctx["files"][P_PLAN_SCHEMA].pop("additionalProperties")
+
+
+def _plan_hash_optional(ctx):
+    ctx["files"][P_PLAN_SCHEMA]["required"].remove("hash")
+
+
+def _plan_step_allows_unknown_members(ctx):
+    ctx["files"][P_PLAN_SCHEMA]["$defs"]["step"].pop("additionalProperties")
+
+
+def _consented_digests_all_images(ctx):
+    vec = _plan_vector(ctx, "linux-zero-action")
+    vec["derived"]["consented_image_references"] = list(vec["document"]["images"])
+
+
+def _action_count_without_pulls(ctx):
+    _plan_vector(ctx, "linux-pull-only")["derived"]["plan_action_count"] = 0
+
+
+def _plan_document_tampered(ctx):
+    _plan_vector(ctx, "linux-fresh-install")["document"]["steps"][1]["estimated_bytes"] += 1
+    _plan_vector(ctx, "linux-fresh-install")["document"]["disk_estimate_bytes"] += 1
+
+
+def _allowlist_digest_drift(ctx):
+    ctx["files"][P_ALLOWLIST_SCHEMA]["$defs"]["image_digest"]["pattern"] = "^sha256:[0-9a-fA-F]{64}$"
+
+
+def _bundled_allowlist_tag(ctx):
+    ctx["files"][P_ALLOWLIST]["entries"].append(
+        {"repository": "ghcr.io/alexindacomp/sprut-worker", "digest": "latest", "purpose": "worker",
+         "platform": "linux/amd64", "min_client_version": "0.1.0"})
+
+
+def _profile_label_optional(ctx):
+    for label in ctx["files"][P_OWNERSHIP]["labels"]:
+        if label["name"] == "profile":
+            label["required"] = False
+
+
+def _profile_not_checked(ctx):
+    for label in ctx["files"][P_OWNERSHIP]["labels"]:
+        if label["name"] == "profile":
+            label["owned_when"] = "not_checked"
+
+
+def _namespace_changed(ctx):
+    reg = ctx["files"][P_OWNERSHIP]
+    reg["label_namespace"] = "io.sprut"
+    for label in reg["labels"]:
+        label["key"] = "io.sprut." + label["name"]
+
+
+def _wslconfig_any_key(ctx):
+    ctx["files"][P_WSL_SCHEMA]["$defs"]["wslconfig_wsl2"].pop("additionalProperties")
+    ctx["files"][P_PLAN_SCHEMA]["$defs"]["wslconfig_wsl2"].pop("additionalProperties")
+
+
+def _integer_accepts_fraction(ctx):
+    SCHEMA_SEMANTICS["integer_accepts_integral_fraction"] = True
+
+
+def _drop_foreign_resource(ctx):
+    reg = ctx["files"][P_REASON_CODES]
+    reg["reason_codes"] = [c for c in reg["reason_codes"] if c["code"] != "FOREIGN_RESOURCE"]
+
+
+def _event_schema_version_untyped(ctx):
+    ctx["files"][P_EVENT_SCHEMA]["properties"]["schema_version"].pop("type")
+
+
+def _engine_reject_to_failed(ctx):
+    _guard(ctx, "ENGINE_CHECK", "IMAGE_PULL")["on_reject"]["ENGINE_TCP_EXPOSED"] = {"to": "FAILED", "event": "error"}
+
+
+def _swap_predicate(pid, fn):
+    def apply(ctx):
+        PREDICATES[pid] = (fn,) + PREDICATES[pid][1:]
+    return apply
+
+
+def _consented_by_digest(c):
+    ref, listed = c.get("image_reference", ""), c.get("consented_image_references") or []
+    ok = isinstance(c.get("consented_plan_id"), str) and ref.split("@")[-1] in [r.split("@")[-1] for r in listed]
+    return None if ok else "CONSENT_REQUIRED"
+
+
+def _allowlist_by_digest(c):
+    ref, allow = c.get("image_reference", ""), c.get("allowlist") or []
+    return None if ref.split("@")[-1] in [a.split("@")[-1] for a in allow] else "IMAGE_NOT_ALLOWED"
+
+
+def _engine_accepts_loopback_tcp(c):
+    ep = c.get("engine_endpoint", "")
+    if not (ep.startswith("unix:///") or ep.startswith("tcp://127.0.0.1")):
+        return "ENGINE_REMOTE_CONTEXT"
+    return None if c.get("engine_tcp_listener") is False else "ENGINE_TCP_EXPOSED"
+
+
+def _terms_without_acknowledgements(c):
+    n, h = c.get("required_licence_ids"), c.get("accepted_licence_ids")
+    return None if isinstance(n, list) and isinstance(h, list) and set(n) <= set(h) else "CONSENT_REQUIRED"
+
+
+def _drop_consent_effect_check(ctx):
+    for e in _machine(ctx, "bootstrap")["effects"]:
+        e.pop("checks", None)
+        e.pop("on_reject", None)
+
+
+def _swap_precondition(pid, fn):
+    def apply(ctx):
+        STEP_PRECONDITIONS[pid] = (fn,) + STEP_PRECONDITIONS[pid][1:]
+    return apply
+
+
+def _restart_without_drain(step, rule, o, reg):
+    return None if o.get("wsl_restart_confirmed") is True else "WSL_RESTART_REQUIRED"
+
+
+def _restart_without_precondition(ctx):
+    _step_kind(ctx, "restart_wsl")["preconditions"] = []
+
+
+def _shell_command(ctx):
+    _step_kind(ctx, "start_engine")["commands"]["linux"].append({"argv": ["/bin/sh", "-c", "systemctl start docker"]})
+
+
+def _free_command_placeholder(ctx):
+    _step_kind(ctx, "start_engine")["commands"]["linux"].append({"argv": ["/usr/bin/systemctl", "start", "{service}"]})
+
+
+def _elevated_in_distro_program(ctx):
+    _step_kind(ctx, "update_wsl")["commands"]["windows"].append({"argv": ["/usr/bin/apt-get", "update"]})
+
+
+def _group_without_acknowledgement(ctx):
+    _step_kind(ctx, "add_user_to_docker_group").pop("acknowledgement")
+
+
+def _rootfs_without_licence(ctx):
+    _step_kind(ctx, "import_distro")["licence_required"] = False
+
+
+def _unverified_title_removed(ctx):
+    _step_kind(ctx, "install_wsl").pop("title_without_source")
+
+
+def _prefix_shape(ctx):
+    ctx["files"]["schemas/plan-step-kinds.schema.json"]["$defs"]["step_kind"]["properties"]["source_url_prefixes"]["items"].pop("pattern")
+    _step_kind(ctx, "apt_add_docker_repo")["source_url_prefixes"] = ["https://download.docker.com/linux/ubuntu"]
+
+
+def _mirrored_allowed(ctx):
+    for path in (P_WSL_SCHEMA, P_PLAN_SCHEMA):
+        ctx["files"][path]["$defs"]["wslconfig_wsl2"]["properties"]["networkingMode"]["enum"] = ["nat", "mirrored"]
+
+
+def _switch_off(name):
+    def apply(ctx):
+        RULE_SWITCHES[name] = False
+    return apply
+
+
+def _precondition_to_non_edge(ctx):
+    for p in ctx["files"][P_STEP_KINDS]["preconditions"]:
+        if p["id"] == "wsl_restart_confirmed":
+            p["on_reject"]["WSL_RESTART_REQUIRED"]["to"] = "READY"
+
+
+def _allowlist_entry_without_codeowners(ctx):
+    ctx["files"][P_ALLOWLIST]["entries"].append(
+        {"repository": "ghcr.io/alexindacomp/sprut-worker", "digest": "sha256:" + "1" * 64, "purpose": "worker",
+         "platform": "linux/amd64", "min_client_version": "0.2.0"})
+
+
+def _verify_source_dropped(ctx):
+    ops = _step_kind(ctx, "apt_add_docker_repo")["commands"]["linux"]
+    ops[:] = [op for op in ops if op.get("client_action") != "verify_source"]
+
+
+def _env_launcher(ctx):
+    for op in _step_kind(ctx, "install_docker_engine")["commands"]["linux"]:
+        op["argv"] = ["/usr/bin/env", "DEBIAN_FRONTEND=noninteractive"] + op["argv"]
+
+
+def _wsl_display_too_wide(ctx):
+    ctx["files"][P_PLAN_SCHEMA]["$defs"]["display_text"].pop("pattern")
+
+
+def _drop_adoption_rule(ctx):
+    reg = ctx["files"][P_OWNERSHIP]
+    reg["rules"] = [r for r in reg["rules"] if r["id"] != "adoption"]
+
+
+def _prerelease_equals_release(ctx):
+    global _semver
+    original = _semver
+    _semver = lambda text: original(text.partition("-")[0])  # noqa: E731
+
+
+def _object_hash_array_as_kind(ctx):
+    ctx["files"][D_CANONICAL_INVALID + "reject-object-hash-of-array.json"]["expected_error"] = "INVALID_KIND"
+
+
 SELF_TEST_MUTATIONS = [
     # bootstrap: READY only after SMOKE_TEST (CF16)
     _add_edge("bootstrap", "PLAN_READY", "READY"),
@@ -1679,11 +2857,84 @@ SELF_TEST_MUTATIONS = [
     ("task: FAILED restarted in place", _task_restart, "machines"),
     ("operation_kinds: model_pull mapped to bootstrap", _kind_remapped, "machines"),
     ("exit resolution: task SUCCEEDED no longer gives 0", _task_succeeded_not_zero, "all"),
+    # sprut-contracts 0.2.0: issue #2 (CR-12, parser/validator semantics)
+    ("step_is_privileged_plan_step no longer declares consented_plan_id", _reads_without_consent, "machines"),
+    ("schema type integer accepts 1.0", _integer_accepts_fraction, "all"),
+    ("event schema_version without type integer (SEC-m6)", _event_schema_version_untyped, "all"),
+    ("object_hash of an array reported as INVALID_KIND", _object_hash_array_as_kind, "all"),
+    # issue #3: step kinds, InstallationPlan
+    ("step kinds: enable_wsl_features not privileged", _uac_step_unprivileged, "all"),
+    ("step kinds: import_distro privileged", _import_distro_privileged, "all"),
+    ("step kinds: Linux apt step without sudo", _linux_apt_unprivileged, "all"),
+    ("step kinds: vocabulary extended with run_script", _open_vocabulary, "all"),
+    ("step kinds: image allowed on install_docker_engine", _image_on_install_step, "all"),
+    ("step kinds: rootfs source optional", _rootfs_source_optional, "all"),
+    ("step kinds: source prefix without path", _prefix_without_path, "all"),
+    ("step kinds: docker group without forced re-login", _relogin_may, "all"),
+    ("step kinds: elevated step renamed", _elevated_renamed, "all"),
+    ("step kinds: title template changed", _title_template_changed, "all"),
+    ("step kinds: title with a free placeholder", _free_placeholder, "all"),
+    ("plan schema: unknown top-level members allowed", _plan_allows_unknown_members, "all"),
+    ("plan schema: hash optional", _plan_hash_optional, "all"),
+    ("plan schema: unknown step members allowed", _plan_step_allows_unknown_members, "all"),
+    ("plan vector: consented_image_references = all images", _consented_digests_all_images, "all"),
+    ("plan vector: pulls not counted as actions", _action_count_without_pulls, "all"),
+    ("plan vector: document changed, stored hash kept", _plan_document_tampered, "all"),
+    # issue #3: images, allowlist, ownership, WSL resources, reason codes
+    ("allowlist schema: digest copy drifts (uppercase hex)", _allowlist_digest_drift, "all"),
+    ("bundled allowlist with a tag instead of a digest", _bundled_allowlist_tag, "all"),
+    ("ownership: profile label optional", _profile_label_optional, "all"),
+    ("ownership: profile not checked", _profile_not_checked, "all"),
+    ("ownership: label namespace changed", _namespace_changed, "all"),
+    ("wsl resources: unmanaged .wslconfig keys allowed", _wslconfig_any_key, "all"),
+    ("reason codes: FOREIGN_RESOURCE removed", _drop_foreign_resource, "all"),
+    # rework round 1: SEC-B1 engine endpoint
+    _drop_check("bootstrap", "ENGINE_CHECK", "IMAGE_PULL", "engine_endpoint_local"),
+    _drop_check("bootstrap", "ENGINE_CHECK", "SMOKE_TEST", "engine_endpoint_local"),
+    ("engine: TCP listener leads to FAILED instead of ACTION_REQUIRED", _engine_reject_to_failed, "machines"),
+    ("engine: tcp:// on loopback accepted", _swap_predicate("engine_endpoint_local", _engine_accepts_loopback_tcp), "all"),
+    # SEC-m3 allowlist pairs, CR-21 versions
+    ("allowlist guard compares digests only", _swap_predicate("image_allowlisted", _allowlist_by_digest), "all"),
+    ("consented-plan guard compares digests only (CR-30)", _swap_predicate("image_in_consented_plan", _consented_by_digest), "all"),
+    ("allowlist: pre-release client equals its release", _prerelease_equals_release, "all"),
+    # CR-20 terms before consent, SEC-C1/C2 acknowledgements
+    ("consent effect without terms_accepted", _drop_consent_effect_check, "machines"),
+    ("terms_accepted ignores acknowledgements", _swap_predicate("terms_accepted", _terms_without_acknowledgements), "all"),
+    ("step kinds: docker group without acknowledgement", _group_without_acknowledgement, "all"),
+    ("plan: docker_access rule off", _switch_off("docker_access"), "all"),
+    ("plan: unregister without immediate import accepted", _switch_off("unregister_pairing"), "all"),
+    # CR04 restart, CR03 file binding
+    ("step kinds: restart_wsl without confirmation precondition", _restart_without_precondition, "all"),
+    ("precondition: WSL restart without drain", _swap_precondition("wsl_restart_confirmed", _restart_without_drain), "all"),
+    ("precondition: rejection to a state INSTALLING cannot reach", _precondition_to_non_edge, "all"),
+    ("plan: replaced .wslconfig values not checked", _switch_off("wslconfig_replaced"), "all"),
+    ("wsl resources: mirrored networking allowed before S2", _mirrored_allowed, "all"),
+    # SEC-A1, SEC-m1, SEC-m2, CR-26
+    ("step kinds: install_wsl without the unverified-download title", _unverified_title_removed, "all"),
+    ("step kinds: shell in a command template", _shell_command, "all"),
+    ("step kinds: unknown placeholder in a command", _free_command_placeholder, "all"),
+    ("step kinds: elevated step runs a distro program", _elevated_in_distro_program, "all"),
+    ("step kinds: rootfs without licence requirement", _rootfs_without_licence, "all"),
+    ("plan: licence requirement not checked", _switch_off("licence_required"), "all"),
+    ("step kinds: prefix without trailing slash, schema pattern removed", _prefix_shape, "all"),
+    # SEC-m5
+    ("ownership: adoption rule removed", _drop_adoption_rule, "all"),
+    # final round
+    ("allowlist entry without CODEOWNERS (SEC-N3)", _allowlist_entry_without_codeowners, "all"),
+    ("apt key used without verify_source as root (SEC-N1)", _verify_source_dropped, "all"),
+    ("apt-get started through /usr/bin/env (SEC-N4)", _env_launcher, "all"),
+    ("unrepresentable .wslconfig value accepted as replaced (CR-29)", _wsl_display_too_wide, "all"),
+    ("ownership: adoption without journal", _switch_off("adoption_needs_journal"), "all"),
 ]
 
 
+_PREDICATES_DEFAULT = dict(PREDICATES)
+_STEP_PRECONDITIONS_DEFAULT = dict(STEP_PRECONDITIONS)
+_SEMVER_DEFAULT = _semver
+
+
 def self_test(base: dict) -> int:
-    global SORT_KEY
+    global SORT_KEY, _semver
     report = Report()
     run_checks(copy.deepcopy(base), report)
     if report.errors:
@@ -1708,6 +2959,11 @@ def self_test(base: dict) -> int:
                 run_checks(ctx, r)
         finally:
             SORT_KEY = utf16_key
+            SCHEMA_SEMANTICS.update(_SCHEMA_SEMANTICS_DEFAULT)
+            RULE_SWITCHES.update(_RULE_SWITCHES_DEFAULT)
+            PREDICATES.update(_PREDICATES_DEFAULT)
+            STEP_PRECONDITIONS.update(_STEP_PRECONDITIONS_DEFAULT)
+            _semver = _SEMVER_DEFAULT
         if r.errors:
             print(f"ok    {label}  ->  {r.errors[0].splitlines()[0]}")
         else:

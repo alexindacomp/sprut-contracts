@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/image-reference.schema.json",
+  "title": "ImageDigest and ImageReference",
+  "description": "Normative string formats for worker images (CF20, CF21, Sprut invariant 3; docs/images-and-ownership.md). The schema itself validates an ImageReference. ImageDigest is `sha256:` plus 64 lowercase hex digits. ImageReference is `<repository>@<ImageDigest>`; there is no tag form and no tag+digest form (`repo:tag@sha256:...` is rejected). The repository is fully qualified with an explicit registry host that contains a dot and has no port (`ghcr.io/alexindacomp/sprut-worker`), so no implicit Docker Hub resolution can apply. Images are pulled and run only by ImageReference, and every run (smoke test, worker, diagnostic) uses an explicit no-pull mode (`docker run --pull=never`, or the Go SDK equivalent: create without pulling); a missing image is a PLAN_STALE / re-plan, never an implicit download. The definitions in $defs are copied verbatim into the schemas that use them; tools/validate.py checks that the copies are identical.",
+  "$ref": "#/$defs/image_reference",
+  "$defs": {
+    "image_digest": {
+      "description": "ImageDigest: content digest of an image manifest, `sha256:` plus 64 lowercase hex digits. Compared as a string.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "repository": {
+      "description": "Fully qualified repository: a registry host with at least one dot (lowercase, no port), then one or more lowercase path components separated by `/`; components use `.`, `_`, `-` only between alphanumerics. At most 255 characters.",
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+(/[a-z0-9]+([._-][a-z0-9]+)*)+$"
+    },
+    "image_reference": {
+      "description": "ImageReference: `<repository>@<ImageDigest>`, the only form passed to the engine. Its digest part is the identity used by the allowlist and the consented plan.",
+      "type": "string",
+      "maxLength": 327,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+(/[a-z0-9]+([._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$"
+    }
+  }
+}
