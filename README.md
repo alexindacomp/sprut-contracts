@@ -15,17 +15,29 @@ them by conformance tests in its own CI.
 |---|---|
 | `registry/reason-codes.json` | Reason codes: `code`, `description` {ru, en}, `next_action` {ru, en}, `retryable`, `cli_exit_code`, `platforms`, `spec_refs` (spec 8.3, 03-CONTRACTS 7) |
 | `registry/exit-codes.json` | `sprut` CLI exit codes (spec 7.3), the ordered `resolution` rules that choose the exit code, and which reason codes map to them explicitly |
-| `registry/state-machines.json` | State machines: `bootstrap` (CF17), `node_status` (CF42), `wsl_availability` (CW01), generic `task` (long operations). A transition not listed is forbidden. `bootstrap` also has machine-readable guards (`guard_context`, `guard_predicates`, `guards` with `on_reject`, `effects`) for consent, plan staleness, privilege, image allowlist and image presence. `operation_kinds` maps every operation kind to its machine |
-| `schemas/*.schema.json` | JSON Schema (draft 2020-12): the registries above, `operation-event.schema.json` (event of spec 7.1 item 4 / 8.1) and the vector file formats |
+| `registry/state-machines.json` | State machines: `bootstrap` (CF17), `node_status` (CF42), `wsl_availability` (CW01), generic `task` (long operations). A transition not listed is forbidden. `bootstrap` also has machine-readable guards (`guard_context`, `guard_predicates`, `guards` with `on_reject`, `effects` with their own `checks`) for consent and accepted terms, plan staleness, privilege, local engine endpoint, image allowlist and image presence. `operation_kinds` maps every operation kind to its machine |
+| `registry/plan-step-kinds.json` | Closed vocabulary of InstallationPlan step kinds: platforms, privilege per platform, Windows elevated-helper operation, acknowledgements, licence requirement, required/allowed members, flag rules, official source prefixes, execution preconditions, fixed command templates, title templates; supported Ubuntu releases |
+| `registry/image-allowlist.json` | The bundled image allowlist (`kind: image_allowlist`); empty in 0.2.0, so every image is refused (fail closed) |
+| `registry/ownership.json` | Ownership label namespace, labels, charset and rules for Sprut containers, volumes and networks |
+| `schemas/*.schema.json` | JSON Schema (draft 2020-12): the registries above, `operation-event.schema.json` (event of spec 7.1 item 4 / 8.1), `installation-plan.schema.json`, `image-reference.schema.json` (ImageDigest, ImageReference), `wsl-resources.schema.json` and the vector file formats |
 | `proto/sprut/v1/common.proto` | Protobuf package `sprut.v1`: `OperationEvent`. gRPC services follow at S1 |
 | `buf.yaml` | buf lint/breaking configuration for `proto/` |
-| `docs/canonical-json.md` | Canonical JSON (RFC 8785 / JCS, restricted) and hash rule (CF03) |
+| `docs/canonical-json.md` | Canonical JSON (RFC 8785 / JCS, restricted), hash rule (CF03) and the JSON Schema number semantics both clients follow |
+| `docs/installation-plan.md` | InstallationPlan format and rules (CF12, CF13), guard inputs derived from a plan, error categories |
+| `docs/images-and-ownership.md` | ImageDigest / ImageReference, the bundled allowlist, ownership labels, FOREIGN_RESOURCE (CF20–CF23) |
+| `docs/wsl-resources.md` | Managed `.wslconfig` keys and the Sprut distribution disk size, rules CR01–CR07 |
 | `test-vectors/canonical-json/` | Canonicalization and `object_hash` vectors |
 | `test-vectors/canonical-json-invalid/` | Inputs that must be rejected before hashing |
 | `test-vectors/state-transitions/` | Allowed and rejected transitions and paths per machine |
 | `test-vectors/guards/` | Guard evaluations: transition + context → allowed, or rejected with a reason code |
+| `test-vectors/effects/` | Effect preconditions: consent is set only when every licence and acknowledgement was given |
+| `test-vectors/step-preconditions/` | Plan step + facts observed before it runs → allowed, or rejected with a reason code and next state |
 | `test-vectors/operation-events/` | `OperationEvent` instances with the expected producer and consumer verdicts |
 | `test-vectors/exit-codes/` | Inputs (final state, reason code, interactivity) and the expected CLI exit code |
+| `test-vectors/installation-plans/` | Valid plans with the derived guard inputs, and invalid plans with the expected error category |
+| `test-vectors/image-allowlist/` | Allowlist documents, client version and the resulting `allowlist` guard input or error |
+| `test-vectors/ownership/` | Inspected labels → owned or not; journal + inspect → adoptable or not; caller-supplied labels → accepted or refused |
+| `test-vectors/wsl-resources/` | WSL resource values → valid or not |
 | `tools/validate.py` | Validator, Python 3 standard library only |
 | `VERSION` | Semantic version of this contract set |
 
@@ -53,13 +65,22 @@ taken from the spec. For bootstrap:
 - the required guards are present.
 
 For node status: jobs only from READY, nothing but OFFLINE after DRAINING. For
-WSL: a ready WSL2 is never changed. It also recomputes every test vector,
-including guard evaluations with the reference predicates.
+WSL: a ready WSL2 is never changed. The `reads` of every guard predicate equal
+the inputs of its reference implementation. The step-kind registry is the
+agreed closed vocabulary with the agreed privilege per platform (the four
+Windows UAC kinds are exactly the elevated-helper operations), sources required
+for downloads, and the re-login / WSL-restart flags; copied schema definitions
+are identical; the ownership registry keeps the namespace and the required
+`managed` and `profile` labels. It also recomputes every test vector,
+including guard evaluations with the reference predicates, InstallationPlan
+validation and derived guard inputs, allowlist, ownership and WSL resources.
 
 `--self-test` applies a list of known-bad changes in memory and fails if any is
 not detected. Examples: `PLAN_READY->READY`, `ACTION_REQUIRED->INSTALLING`, an
 unguarded `ENGINE_CHECK->IMAGE_PULL`, PROBING no longer clearing consent, a
-tampered canonical vector, code-point key order. CI runs both on every push and
+tampered canonical vector, code-point key order, an unprivileged UAC step, an
+extra step kind, an optional rootfs source, unknown plan members, a plan
+changed without a new hash, a schema `integer` accepting `1.0`. CI runs both on every push and
 pull request (`.github/workflows/validate.yml`, runner pinned to
 `ubuntu-24.04`, which ships Python 3.12; no packages are installed).
 
@@ -69,8 +90,8 @@ Clients add this repository as a git submodule pinned to a release tag:
 
 ```sh
 git submodule add https://github.com/alexindacomp/sprut-contracts.git contracts
-git -C contracts checkout v0.1.0
-git add contracts && git commit -m "Pin sprut-contracts v0.1.0"
+git -C contracts checkout v0.2.0
+git add contracts && git commit -m "Pin sprut-contracts v0.2.0"
 ```
 
 Then, in each implementation:
@@ -80,7 +101,14 @@ Then, in each implementation:
   never hard-code a code, state or exit code that is not in the registry;
 - run the conformance suite over `test-vectors/**` in CI: canonical JSON and
   hash, every state-transition case and sequence, every guard case, every
-  exit-code case, every OperationEvent case;
+  exit-code case, every OperationEvent case, every InstallationPlan vector
+  (verdict, error category and derived guard inputs), allowlist, ownership and
+  WSL resources case;
+- embed `registry/image-allowlist.json` at build time as the only allowlist
+  (`docs/images-and-ownership.md`), and read plan step kinds and ownership
+  labels from `registry/plan-step-kinds.json` and `registry/ownership.json`;
+- validate against `schemas/` with the number semantics of
+  `docs/canonical-json.md` 3.3 (a stock draft 2020-12 validator differs);
 - implement the bootstrap guard predicates exactly as defined in
   `registry/state-machines.json` (reference: `tools/validate.py`), and fail
   closed when an input is missing;
@@ -133,6 +161,10 @@ their build tool from `contracts/proto`.
 - `ts` values are RFC 3339 UTC with the `Z` suffix, seconds 00–59.
 - Every schema `pattern` matches the whole string (`^...$`); see
   `docs/canonical-json.md` section 3.2 for Java and Python matching pitfalls.
+- Numbers in schemas (`docs/canonical-json.md` 3.3): `"type": "integer"`
+  rejects `1.0`, and every numeric `const`/`enum` carries `"type": "integer"`
+  (so `schema_version: 1.0` is rejected); `object_hash` of a non-object is
+  `INVALID_JSON`.
 
 ### Consent and actions (bootstrap)
 
@@ -146,6 +178,20 @@ exact `plan_id`:
 - Entering PROBING clears consent. A process or computer restart in any
   unfinished state, including PLAN_READY and WAITING_FOR_CONSENT, resumes in
   PROBING; the journal is never trusted to continue.
+- The plan is an InstallationPlan document (`docs/installation-plan.md`):
+  every element of `steps[]` is an action (`plan_action_count` = number of
+  steps) and an image pull is an `image_pull` step. The consent screen and
+  `sprut setup plan` show every typed member of every step.
+- Licence terms and the acknowledgements for the docker group and for removing
+  the Sprut distribution are accepted separately and never on the user's
+  behalf: consent (`set_consented_plan_id`) is set only when all of them were
+  given (`terms_accepted`, `test-vectors/effects/`). In the CLI each needs its
+  own flag (`--accept-license <id>`, `--accept-docker-group`,
+  `--accept-distro-removal`); `--yes` replaces none of them.
+- Right before a step runs, its execution preconditions are checked against
+  fresh facts (`test-vectors/step-preconditions/`): for example `restart_wsl`
+  needs a separate confirmation after the drain (CR04), `write_wslconfig` a
+  `.wslconfig` unchanged since the plan.
 - Before INSTALLING, the plan is rebuilt from the current host and its
   `plan_id` must equal the consented one (`PLAN_STALE` otherwise). Only steps of
   that plan carrying the privilege flag may be elevated. IMAGE_PULL requires the
@@ -179,6 +225,7 @@ exact `plan_id`:
   | ENGINE_CHECK → IMAGE_PULL | CONSENT_REQUIRED | PROBING | state |
   | ENGINE_CHECK → IMAGE_PULL | PLAN_STALE | FAILED | error |
   | ENGINE_CHECK / IMAGE_PULL → SMOKE_TEST | PLAN_STALE (image absent) | PROBING | state |
+  | ENGINE_CHECK → IMAGE_PULL / SMOKE_TEST | ENGINE_REMOTE_CONTEXT, ENGINE_TCP_EXPOSED | ACTION_REQUIRED | error |
   | any guard | IMAGE_NOT_ALLOWED | FAILED | error |
 - In the CLI, `--yes` is valid only together with `--plan-id <hash>` equal to
   the plan shown, `sprut setup apply --plan-id <hash> --yes`. Consent is for
@@ -304,9 +351,23 @@ and result shape on both platforms.
 
 ## Status
 
-`0.1.0` — minimal contract set for the Windows client C0/C1: reason codes,
-exit codes (status `proposal` until fixed at S-1), bootstrap/node/WSL state
-machines with bootstrap guards, OperationEvent, canonical JSON and hash.
+`0.2.0` — contract prerequisites for C1 (see `CHANGELOG.md`): InstallationPlan
+with the closed step-kind vocabulary, preconditions and command templates,
+ImageDigest / ImageReference, the bundled image allowlist, ownership labels,
+local engine endpoint, WSL resources, FOREIGN_RESOURCE, PLAN_INVALID and
+ENGINE_TCP_EXPOSED, and the parser/validator rules of issue #2. Exit codes keep
+status `proposal` until fixed at S-1.
+
+## Requirements before the first non-empty allowlist
+
+See `SECURITY.md` for the release checklist; `tools/validate.py` fails on a
+non-empty allowlist while `CODEOWNERS` is missing.
+
+The allowlist decides which code runs on users' machines. Before any entry is
+added to `registry/image-allowlist.json` (SEC-m4), the repository owner sets up:
+CODEOWNERS for `registry/`, `schemas/`, `proto/`, `tools/` and `.github/`;
+branch protection on `master` with the `validate` check required; signed
+release tags. Clients pin only signed tags.
 
 ## Planned
 
@@ -315,10 +376,11 @@ machines with bootstrap guards, OperationEvent, canonical JSON and hash.
   journal content is never used to continue execution without a probe, and the
   diagnostic archive manifest without secrets (CF18, CF81, CF82). Deferred
   from SEC-m10.
-- **InstallationPlan format** (`kind: installation_plan`, actions with
-  privilege flags, image digests) as the concrete input of the bootstrap guards.
-- **Repository protection on GitHub**, configured by the repository owner:
-  CODEOWNERS for `registry/`, `schemas/`, `proto/`, `tools/` and
-  `.github/`; branch protection on `master` with the `validate` check
-  required.
+- **Signed, updatable image allowlist** (today only the bundled one).
+- **ClientProfile contract**, including the profile id format (the ownership
+  label already restricts it to `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).
+- **Export/backup of the Sprut distribution** before `unregister_distro`.
+- **Signed manifest for download digests** (today they are constants of the
+  client build).
+- `networkingMode=mirrored` for node mode, after S2 decides Q14.
 - `buf lint` / `buf breaking` in CI together with the first gRPC services (S1).

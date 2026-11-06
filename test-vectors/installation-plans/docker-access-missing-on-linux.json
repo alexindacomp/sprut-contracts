@@ -1,0 +1,28 @@
+{
+  "name": "docker-access-missing-on-linux",
+  "description": "Linux plans always state docker_access.",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "steps": [],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "disk_estimate_bytes": 0,
+    "hash": "218cf5abf319d2df5b2c15be73f14961d43f605c244525dfb03cc98ed0537f33"
+  },
+  "expected": "invalid",
+  "expected_error": "DOCKER_ACCESS_MISMATCH"
+}

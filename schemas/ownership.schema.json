@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/ownership.schema.json",
+  "title": "Ownership labels registry",
+  "description": "Format of registry/ownership.json (CF22, Sprut invariant 2; docs/images-and-ownership.md). Every container, volume and network Sprut creates carries the required labels; listing, stop and cleanup filter by them. Labels are a HINT, not proof: anyone with access to the engine can set them, so ownership is verified by inspecting the resource before every change (owned_when rules below) and the client only acts on resource ids it recorded when it created them. Keys in the label namespace are reserved: callers, task manifests and user configuration can never set them. Every label key and value, including caller-supplied extra labels, matches label_charset_pattern.",
+  "type": "object",
+  "required": ["schema_version", "label_namespace", "label_charset_pattern", "labelled_resources", "labels", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "label_namespace": {
+      "description": "Reverse-DNS namespace of Sprut labels. A label key is in the namespace if it starts with label_namespace followed by `.`.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)+$"
+    },
+    "label_charset_pattern": {
+      "description": "Anchored pattern every label key and value must match (also caller-supplied labels outside the namespace).",
+      "type": "string",
+      "minLength": 3
+    },
+    "labelled_resources": {
+      "description": "Engine resource types that carry the labels. Images are not labelled (they are identified by digest); WSL distributions are not labelled (ownership by registered BasePath, see rules).",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["container", "volume", "network"]}
+    },
+    "labels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/label"}
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "text": {"$ref": "#/$defs/localized"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["name", "key", "required", "value_pattern", "owned_when", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+        "key": {
+          "description": "Full label key: label_namespace + `.` + name.",
+          "type": "string"
+        },
+        "required": {
+          "description": "Set on every labelled resource Sprut creates. A resource missing a required label is not Sprut's.",
+          "type": "boolean"
+        },
+        "value_pattern": {
+          "description": "Anchored pattern of the value; a narrowing of label_charset_pattern.",
+          "type": "string",
+          "minLength": 3
+        },
+        "value": {
+          "description": "Fixed value, when the label has one (owned_when = equals_value).",
+          "type": "string"
+        },
+        "owned_when": {
+          "description": "Ownership check on inspect. equals_value: the value equals `value`. equals_current_profile: the value equals the id of the client profile doing the operation (a resource of another profile is not touched). not_checked: informational only (diagnostics), never part of the ownership decision.",
+          "enum": ["equals_value", "equals_current_profile", "not_checked"]
+        },
+        "description": {"$ref": "#/$defs/localized"}
+      },
+      "if": {"properties": {"owned_when": {"const": "equals_value"}}, "required": ["owned_when"]},
+      "then": {"required": ["value"]},
+      "else": {"not": {"required": ["value"]}}
+    }
+  }
+}

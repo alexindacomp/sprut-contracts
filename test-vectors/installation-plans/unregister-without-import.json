@@ -1,0 +1,66 @@
+{
+  "name": "unregister-without-import",
+  "description": "Removing the Sprut distribution must be immediately followed by import_distro.",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "broken",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "ready",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "steps": [
+      {
+        "id": "unregister-distro",
+        "kind": "unregister_distro",
+        "title": {
+          "ru": "Удалить повреждённый дистрибутив WSL Sprut (данные внутри него будут потеряны)",
+          "en": "Remove the damaged Sprut WSL distribution (data inside it will be lost)"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0,
+        "distro": {
+          "name": "sprut",
+          "base_path": "C:\\Users\\Алекс\\AppData\\Local\\Sprut\\wsl\\sprut",
+          "vhdx_bytes": 8589934592
+        }
+      },
+      {
+        "id": "configure-distro",
+        "kind": "configure_distro",
+        "title": {
+          "ru": "Включить systemd в дистрибутиве Sprut",
+          "en": "Enable systemd in the Sprut distribution"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      }
+    ],
+    "images": [],
+    "licences": [
+      {
+        "id": "ubuntu",
+        "url": "https://ubuntu.com/legal/terms",
+        "sha256": "cd5a9e1421fb98041d2aab6a60fe13800bf5e8be9ebf76dd0569baf4d1ef7d22"
+      }
+    ],
+    "disk_estimate_bytes": 0,
+    "hash": "53dee88a3bf955e501bfbcc0dd75b49a0806af8a118cf9a19a6f0caf6091c2a3"
+  },
+  "expected": "invalid",
+  "expected_error": "UNPAIRED_UNREGISTER"
+}

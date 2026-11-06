@@ -1,0 +1,37 @@
+{
+  "name": "linux-zero-action",
+  "description": "Engine ready and the image present by digest: no steps, plan_action_count 0, and the image without a pull step is not in consented_image_digests (CR-18).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "steps": [],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "docker_access": "docker_group",
+    "disk_estimate_bytes": 0,
+    "hash": "149a7c181bb0e4e28de65934ab90bf3c4d812cc02ff8605c92226ab1ae38c196"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "149a7c181bb0e4e28de65934ab90bf3c4d812cc02ff8605c92226ab1ae38c196",
+    "plan_action_count": 0,
+    "consented_image_references": [],
+    "privileged_step_ids": [],
+    "windows_elevated_steps": [],
+    "required_licence_ids": [],
+    "required_acknowledgements": []
+  }
+}

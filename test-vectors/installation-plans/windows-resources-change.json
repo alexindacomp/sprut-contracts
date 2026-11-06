@@ -1,0 +1,91 @@
+{
+  "name": "windows-resources-change",
+  "description": "WSL resources only: managed .wslconfig keys, the Sprut distribution disk size and the confirmed WSL restart; no privileged step.",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "ready",
+      "docker_engine": "running",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "ready",
+      "docker_engine": "running",
+      "worker_image": "present"
+    },
+    "steps": [
+      {
+        "id": "write-wslconfig",
+        "kind": "write_wslconfig",
+        "title": {
+          "ru": "Изменить ресурсы WSL в .wslconfig (действует на все дистрибутивы WSL)",
+          "en": "Change WSL resources in .wslconfig (affects all WSL distributions)"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": true,
+        "estimated_bytes": 0,
+        "wslconfig": {
+          "memory": "16GB",
+          "processors": 8,
+          "swap": "0",
+          "networkingMode": "nat"
+        },
+        "wslconfig_file": {
+          "sha256": "d93116f2cf513301ac21833279589a42463b0b44b017a4088b150bb90e63d126",
+          "replaced": {
+            "memory": "4GB"
+          }
+        }
+      },
+      {
+        "id": "resize-distro-disk",
+        "kind": "resize_distro_disk",
+        "title": {
+          "ru": "Изменить максимальный размер диска дистрибутива Sprut",
+          "en": "Change the maximum disk size of the Sprut distribution"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0,
+        "distro_disk_size": "512GB"
+      },
+      {
+        "id": "restart-wsl",
+        "kind": "restart_wsl",
+        "title": {
+          "ru": "Перезапустить WSL (остановит все дистрибутивы WSL)",
+          "en": "Restart WSL (stops all WSL distributions)"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      }
+    ],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "disk_estimate_bytes": 0,
+    "hash": "7d660194c4e0582247bcc9a10a8071b105a7288a54ff56d1d7fcfaba22f063b2"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "7d660194c4e0582247bcc9a10a8071b105a7288a54ff56d1d7fcfaba22f063b2",
+    "plan_action_count": 3,
+    "consented_image_references": [],
+    "privileged_step_ids": [],
+    "windows_elevated_steps": [],
+    "required_licence_ids": [],
+    "required_acknowledgements": []
+  }
+}

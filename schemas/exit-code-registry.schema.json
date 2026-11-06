@@ -7,7 +7,7 @@
   "required": ["schema_version", "status", "resolution", "exit_codes"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"type": "integer", "const": 1},
     "status": {
       "description": "proposal: may change until fixed at S-1; fixed: changes only with a new major CLI version.",
       "enum": ["proposal", "fixed"]

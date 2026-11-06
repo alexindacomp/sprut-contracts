@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "label_namespace": "io.github.alexindacomp.sprut",
+  "label_charset_pattern": "^[A-Za-z0-9._/:=@+-]{1,1024}$",
+  "labelled_resources": ["container", "volume", "network"],
+  "labels": [
+    {
+      "name": "managed",
+      "key": "io.github.alexindacomp.sprut.managed",
+      "required": true,
+      "value_pattern": "^true$",
+      "value": "true",
+      "owned_when": "equals_value",
+      "description": {
+        "ru": "Ресурс создан Sprut.",
+        "en": "The resource was created by Sprut."
+      }
+    },
+    {
+      "name": "profile",
+      "key": "io.github.alexindacomp.sprut.profile",
+      "required": true,
+      "value_pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "owned_when": "equals_current_profile",
+      "description": {
+        "ru": "Идентификатор профиля клиента, создавшего ресурс (CF22: метки профиля). Ресурсы другого профиля не трогаются.",
+        "en": "Id of the client profile that created the resource (CF22: profile labels). Resources of another profile are not touched."
+      }
+    },
+    {
+      "name": "operation_id",
+      "key": "io.github.alexindacomp.sprut.operation_id",
+      "required": false,
+      "value_pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "owned_when": "not_checked",
+      "description": {
+        "ru": "operation_id операции, создавшей ресурс; только для диагностики, в решении о владении не участвует.",
+        "en": "operation_id of the operation that created the resource; diagnostics only, not part of the ownership decision."
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "labels_are_a_hint",
+      "text": {
+        "ru": "Метки — подсказка, а не доказательство: их может поставить любой, у кого есть доступ к engine. Перед остановкой, удалением или изменением ресурс читается через inspect, и проверяются все метки с owned_when ≠ not_checked; кроме того, клиент действует только на id, которые он сам записал при создании ресурса.",
+        "en": "Labels are a hint, not proof: anyone with access to the engine can set them. Before a stop, removal or change the resource is inspected and every label with owned_when other than not_checked is checked; in addition the client only acts on ids it recorded when it created the resource."
+      }
+    },
+    {
+      "id": "filter_by_labels",
+      "text": {
+        "ru": "Список, остановка и очистка ресурсов фильтруются по managed и profile на стороне engine (label filter) и затем перепроверяются inspect. Глобальный prune и операции без фильтра не используются.",
+        "en": "Listing, stop and cleanup filter by managed and profile on the engine side (label filter) and then re-check with inspect. Global prune and unfiltered operations are never used."
+      }
+    },
+    {
+      "id": "namespace_reserved",
+      "text": {
+        "ru": "Ключи в пространстве имён label_namespace ставит только ядро клиента. Дополнительные метки от вызывающего кода с ключом в этом пространстве отклоняются.",
+        "en": "Keys in label_namespace are set only by the client core. Extra labels from callers with a key in the namespace are refused."
+      }
+    },
+    {
+      "id": "label_charset",
+      "text": {
+        "ru": "Ключи и значения всех меток соответствуют label_charset_pattern: без пробелов, кавычек, обратной косой черты, управляющих и не-ASCII символов.",
+        "en": "Keys and values of all labels match label_charset_pattern: no spaces, quotes, backslashes, control or non-ASCII characters."
+      }
+    },
+    {
+      "id": "foreign_resource",
+      "text": {
+        "ru": "Если операции нужно изменить ресурс, который существует, но не принадлежит Sprut (например, контейнер или volume с тем же именем без меток Sprut), ничего не меняется и операция завершается с FOREIGN_RESOURCE. При списке и очистке чужие ресурсы просто пропускаются.",
+        "en": "If an operation needs to change a resource that exists but is not Sprut's (for example a container or volume with the same name without the Sprut labels), nothing is changed and the operation ends with FOREIGN_RESOURCE. Listing and cleanup simply skip foreign resources."
+      }
+    },
+    {
+      "id": "wsl_distribution",
+      "text": {
+        "ru": "Windows: дистрибутив WSL принадлежит Sprut, только если он зарегистрирован под именем дистрибутива Sprut и его BasePath равен каталогу Sprut в %LOCALAPPDATA%\\Sprut\\wsl\\. Перед каждым изменяющим вызовом BasePath перечитывается; иначе FOREIGN_RESOURCE. Пользовательские дистрибутивы и docker-desktop* не изменяются.",
+        "en": "Windows: a WSL distribution is Sprut's only if it is registered under the Sprut distribution name and its BasePath equals the Sprut directory under %LOCALAPPDATA%\\Sprut\\wsl\\. BasePath is re-read before every changing call; otherwise FOREIGN_RESOURCE. User distributions and docker-desktop* are never changed."
+      }
+    },
+    {
+      "id": "adoption",
+      "text": {
+        "ru": "Существующий контейнер или volume с метками Sprut переиспользуется (adopt) только если его id записан в журнале этого профиля И inspect показывает: образ — ImageReference из allowlist, нет bind-монтирований хоста, нет privileged, нет Docker-сокета. Помеченный ресурс, которого нет в журнале, никогда не переиспользуется: он не трогается и при необходимости приводит к FOREIGN_RESOURCE.",
+        "en": "An existing container or volume with Sprut labels is reused (adopted) only if its id is recorded in this profile's journal AND inspect shows: the image is an allowlisted ImageReference, no host bind mounts, not privileged, no Docker socket. A labelled resource that is not in the journal is never reused: it is left alone and, if it is in the way, leads to FOREIGN_RESOURCE."
+      }
+    },
+    {
+      "id": "images",
+      "text": {
+        "ru": "Образы не размечаются. Клиент удаляет только образы, которые сам загрузил (digest записан при загрузке), только по digest и только если образ не использует ни один контейнер, не принадлежащий Sprut.",
+        "en": "Images are not labelled. The client removes only images it pulled itself (digest recorded at pull time), only by digest, and only if no container that is not Sprut's uses the image."
+      }
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/plan-step-kinds.schema.json",
+  "title": "InstallationPlan step-kind registry",
+  "description": "Format of registry/plan-step-kinds.json: the CLOSED vocabulary of InstallationPlan step kinds (CF12, CF13; docs/installation-plan.md). A plan step whose kind is not listed here is rejected (UNKNOWN_STEP_KIND). For each kind: the platforms and whether it is privileged there; the Windows elevated-helper operation; a required separate acknowledgement; whether a licence is required; which optional step members it requires or allows; the allowed values of the three flags; the official source URL prefixes (a guard rail; the pinned sha256 is the trust anchor); the execution preconditions; the fixed command templates per platform; and the title templates.",
+  "type": "object",
+  "required": ["schema_version", "supported_ubuntu", "placeholders", "preconditions", "step_kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "supported_ubuntu": {
+      "type": "object",
+      "required": ["codenames", "architecture", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "codenames": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z]+$"}},
+        "architecture": {"const": "amd64"},
+        "note": {"type": "string", "minLength": 1}
+      }
+    },
+    "placeholders": {
+      "description": "The only placeholders allowed in command templates.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "preconditions": {
+      "description": "Execution preconditions checked right before a step runs, against freshly observed facts (`reads`) and the consented plan step. A failing precondition stops the step with the reason code; the bootstrap operation moves from INSTALLING per on_reject.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/precondition"}
+    },
+    "step_kinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/step_kind"}
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "precondition": {
+      "type": "object",
+      "required": ["id", "reads", "fails_with", "on_reject", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+        "reads": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}},
+        "fails_with": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"}},
+        "on_reject": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["to", "event"],
+            "additionalProperties": false,
+            "properties": {
+              "to": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+              "event": {"enum": ["error", "state"]}
+            }
+          }
+        },
+        "description": {"$ref": "#/$defs/localized"}
+      }
+    },
+    "platform_rule": {
+      "type": "object",
+      "required": ["privileged"],
+      "additionalProperties": false,
+      "properties": {
+        "privileged": {
+          "description": "true: the step runs with host elevation (Windows: UAC through the elevated helper; Linux: sudo for the fixed commands of this kind). Root inside the Sprut WSL distribution is not host elevation.",
+          "type": "boolean"
+        }
+      }
+    },
+    "flag_rule": {
+      "description": "never: the flag is false; always: the flag is true; may: the planner decides from the probe.",
+      "enum": ["never", "may", "always"]
+    },
+    "member": {"enum": ["image", "source", "wslconfig", "wslconfig_file", "distro_disk_size", "distro", "target_user"]},
+    "command": {
+      "description": "One operation. argv: a program started with this exact argument list (no shell); argv[0] is absolute: `{system32}\\\\...` for a Windows program, or a Linux path (on Windows it runs inside the Sprut distribution as root through `{system32}\\\\wsl.exe --distribution {distro_name} --user root --exec`; on Linux privileged kinds run it through `/usr/bin/sudo --`). install_file: the core writes `content` to a file it owns and installs it at `path` with `mode` (`/usr/bin/install -D -m <mode>`, as root like argv). client_action: a fixed core operation (download_source: download step.source over HTTPS into a staging directory of the client; verify_source: run by the same principal as the step's commands (root through sudo or in the distribution, or the elevated helper), copy the download into a directory only that principal can write (Linux: `install -m 0600 -o root -g root`; Windows helper: an Administrators-only directory), compute the SHA-256 of that copy and compare it with step.source.sha256 (INTEGRITY_MISMATCH otherwise); `{verified_file}` is that copy; edit_wslconfig: the managed-key edit of docs/wsl-resources.md; engine_pull: engine API pull of step.image). when: only if step.source is present / absent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "when": {"enum": ["source_present", "source_absent"]},
+        "argv": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "install_file": {
+          "type": "object",
+          "required": ["path", "mode", "content"],
+          "additionalProperties": false,
+          "properties": {
+            "path": {"type": "string", "pattern": "^/[A-Za-z0-9._/-]+$"},
+            "mode": {"enum": ["0644"]},
+            "content": {"type": "string", "minLength": 1}
+          }
+        },
+        "client_action": {"enum": ["download_source", "verify_source", "edit_wslconfig", "engine_pull"]}
+      },
+      "oneOf": [
+        {"required": ["argv"]},
+        {"required": ["install_file"]},
+        {"required": ["client_action"]}
+      ]
+    },
+    "step_kind": {
+      "type": "object",
+      "required": ["kind", "platforms", "required_members", "optional_members", "licence_required", "flags", "source_url_prefixes", "preconditions", "commands", "title", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+        "platforms": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "windows": {"$ref": "#/$defs/platform_rule"},
+            "linux": {"$ref": "#/$defs/platform_rule"}
+          },
+          "anyOf": [{"required": ["windows"]}, {"required": ["linux"]}]
+        },
+        "windows_elevated_step": {
+          "description": "Operation of the Windows elevated (UAC) helper; present exactly for kinds privileged on windows; equals the kind in UPPER_SNAKE_CASE (Java ElevatedStep).",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+        },
+        "acknowledgement": {
+          "description": "A separate explicit acknowledgement the user must give, beyond plan consent and --yes (guard input given_acknowledgements; CLI --accept-docker-group / --accept-distro-removal; GUI control unchecked by default).",
+          "enum": ["docker_group", "distro_removal"]
+        },
+        "licence_required": {"description": "A step of this kind must list at least one licence in licence_ids.", "type": "boolean"},
+        "required_members": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/member"}},
+        "optional_members": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/member"}},
+        "flags": {
+          "type": "object",
+          "required": ["requires_reboot", "requires_relogin", "requires_wsl_restart"],
+          "additionalProperties": false,
+          "properties": {
+            "requires_reboot": {"$ref": "#/$defs/flag_rule"},
+            "requires_relogin": {"$ref": "#/$defs/flag_rule"},
+            "requires_wsl_restart": {"$ref": "#/$defs/flag_rule"}
+          }
+        },
+        "source_url_prefixes": {
+          "description": "Official sources (a guard rail; the pinned sha256 is the trust anchor): the parsed final URL of a download must start with one of these prefixes. Each prefix is https://, a host and a path ending with `/`. Non-empty exactly when the kind requires or allows `source`.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^https://[a-z0-9]+([.-][a-z0-9]+)*/([A-Za-z0-9_~+=-][A-Za-z0-9._~+=-]*/)*$"}
+        },
+        "preconditions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}},
+        "environment": {
+          "description": "Environment variables the executor sets for this kind's commands, on top of its fixed base environment (never inherited from the user). Only DEBIAN_FRONTEND=noninteractive is allowed.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"DEBIAN_FRONTEND": {"const": "noninteractive"}}
+        },
+        "commands": {
+          "description": "Fixed command templates per platform of the kind, executed in order. Nothing from the host, the user or the network becomes part of a command except the placeholders.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/command"}},
+            "linux": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/command"}}
+          }
+        },
+        "title": {
+          "description": "Title template. The only placeholder is {repository} (the repository part of the step's image), allowed only for kinds that require image. A step's title must equal the rendered template exactly.",
+          "$ref": "#/$defs/localized"
+        },
+        "title_without_source": {
+          "description": "Title used when an optional source is absent (the download is done by another program and not verified by Sprut). Present exactly for kinds with an optional source.",
+          "$ref": "#/$defs/localized"
+        },
+        "note": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

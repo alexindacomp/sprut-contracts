@@ -1,0 +1,30 @@
+{
+  "name": "unknown-top-level-member",
+  "description": "Unknown members cannot be displayed or consented and are rejected.",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "steps": [],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "docker_access": "docker_group",
+    "created_at": "2026-11-07T10:00:00Z",
+    "disk_estimate_bytes": 0,
+    "hash": "356cd93b4449b60c7b6a2236598c3536866dd34f1fa8aabec0bee6f2d913386d"
+  },
+  "expected": "invalid",
+  "expected_error": "SCHEMA_VIOLATION"
+}

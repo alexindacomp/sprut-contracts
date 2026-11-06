@@ -1,0 +1,57 @@
+{
+  "name": "windows-wsl-update-unverified",
+  "description": "update_wsl without source: wsl.exe downloads the update and Sprut does not verify it, which the title says (SEC-A1).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL_OUTDATED",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "steps": [
+      {
+        "id": "update-wsl",
+        "kind": "update_wsl",
+        "title": {
+          "ru": "Обновить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш)",
+          "en": "Update WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash)"
+        },
+        "privileged": true,
+        "requires_reboot": true,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      }
+    ],
+    "images": [],
+    "licences": [],
+    "disk_estimate_bytes": 0,
+    "hash": "1eff8544287e96cbee8229130bcffa130f3ee80ac6cb80caa3d5dd6b68365cee"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "1eff8544287e96cbee8229130bcffa130f3ee80ac6cb80caa3d5dd6b68365cee",
+    "plan_action_count": 1,
+    "consented_image_references": [],
+    "privileged_step_ids": [
+      "update-wsl"
+    ],
+    "windows_elevated_steps": [
+      {
+        "step_id": "update-wsl",
+        "elevated_step": "UPDATE_WSL"
+      }
+    ],
+    "required_licence_ids": [],
+    "required_acknowledgements": []
+  }
+}

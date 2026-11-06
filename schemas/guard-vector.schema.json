@@ -39,9 +39,15 @@
                 }
               },
               "privilege_granted": {"type": "boolean"},
-              "image_digest": {"type": "string"},
+              "image_reference": {"type": "string"},
+              "engine_endpoint": {"type": "string"},
+              "engine_tcp_listener": {"type": "boolean"},
+              "required_licence_ids": {"type": "array", "items": {"type": "string"}},
+              "accepted_licence_ids": {"type": "array", "items": {"type": "string"}},
+              "required_acknowledgements": {"type": "array", "items": {"type": "string"}},
+              "given_acknowledgements": {"type": "array", "items": {"type": "string"}},
               "image_present": {"type": "boolean"},
-              "consented_image_digests": {"type": "array", "items": {"type": "string"}},
+              "consented_image_references": {"type": "array", "items": {"type": "string"}},
               "allowlist": {"type": "array", "items": {"type": "string"}}
             }
           },

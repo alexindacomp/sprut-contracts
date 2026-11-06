@@ -1,0 +1,386 @@
+{
+  "schema_version": 1,
+  "supported_ubuntu": {
+    "codenames": ["jammy", "noble"],
+    "architecture": "amd64",
+    "note": "Ubuntu LTS releases on which Docker Engine and the NVIDIA toolkit are installed from their apt repositories (Linux host, and the Sprut distribution on Windows). Anything else is UNSUPPORTED_PROFILE. Provisional: the accepted releases are fixed at S-1."
+  },
+  "placeholders": [
+    {"name": "system32", "description": "Windows system directory from the OS API (GetSystemDirectoryW), never from PATH or an environment variable; only as the prefix of argv[0]."},
+    {"name": "distro_name", "description": "Name of the Sprut WSL distribution, a client constant (working name sprut)."},
+    {"name": "distro_base_path", "description": "Install directory of the Sprut distribution under %LOCALAPPDATA%\\Sprut\\wsl\\, a client constant."},
+    {"name": "verified_file", "description": "Path of the copy made and checked by the preceding verify_source: owned by the principal that runs the command (root / the elevated helper), in a directory only that principal can write, its SHA-256 equal to step.source.sha256. Commands never use the downloaded file itself."},
+    {"name": "target_user", "description": "step.target_user.name."},
+    {"name": "codename", "description": "Ubuntu codename of the target system, one of supported_ubuntu.codenames."},
+    {"name": "distro_disk_size", "description": "step.distro_disk_size."}
+  ],
+  "preconditions": [
+    {"id": "source_verified", "reads": ["downloaded_sha256"],
+     "fails_with": ["INTEGRITY_MISMATCH"], "on_reject": {"INTEGRITY_MISMATCH": {"to": "FAILED", "event": "error"}},
+     "description": {"ru": "SHA-256 загруженного файла, вычисленный процессом, который его использует (для шагов с правами — сам elevated helper/процесс под sudo), равен step.source.sha256. Шаг без source допустим только для kind с необязательным source (загрузку выполняет wsl.exe, это указано в заголовке).", "en": "The SHA-256 of the downloaded file, computed by the process that uses it (for privileged steps the elevated helper / the sudo process itself), equals step.source.sha256. A step without source is allowed only for kinds whose source is optional (wsl.exe downloads; the title says so)."}},
+    {"id": "ubuntu_supported", "reads": ["ubuntu_codename", "architecture"],
+     "fails_with": ["UNSUPPORTED_PROFILE"], "on_reject": {"UNSUPPORTED_PROFILE": {"to": "FAILED", "event": "error"}},
+     "description": {"ru": "Кодовое имя Ubuntu есть в supported_ubuntu.codenames, архитектура — supported_ubuntu.architecture.", "en": "The Ubuntu codename is in supported_ubuntu.codenames and the architecture equals supported_ubuntu.architecture."}},
+    {"id": "target_user_current", "reads": ["process_user"],
+     "fails_with": ["PLAN_STALE"], "on_reject": {"PLAN_STALE": {"to": "PROBING", "event": "state"}},
+     "description": {"ru": "Пользователь процесса клиента ({name, uid} по uid процесса, не из переменных окружения) равен step.target_user.", "en": "The user of the client process ({name, uid} from the process uid, never from environment variables) equals step.target_user."}},
+    {"id": "distro_owned", "reads": ["registered_distro"],
+     "fails_with": ["PLAN_STALE", "FOREIGN_RESOURCE"],
+     "on_reject": {"PLAN_STALE": {"to": "PROBING", "event": "state"}, "FOREIGN_RESOURCE": {"to": "ACTION_REQUIRED", "event": "error"}},
+     "description": {"ru": "Дистрибутив, зарегистрированный под step.distro.name, перечитан перед вызовом и его BasePath равен step.distro.base_path (иначе FOREIGN_RESOURCE); если он не зарегистрирован — PLAN_STALE.", "en": "The distribution registered under step.distro.name is re-read before the call and its BasePath equals step.distro.base_path (otherwise FOREIGN_RESOURCE); if it is not registered, PLAN_STALE."}},
+    {"id": "wslconfig_unchanged", "reads": ["wslconfig_sha256"],
+     "fails_with": ["PLAN_STALE"], "on_reject": {"PLAN_STALE": {"to": "PROBING", "event": "state"}},
+     "description": {"ru": "SHA-256 текущего .wslconfig (или absent) равен step.wslconfig_file.sha256: файл не менялся после показа плана.", "en": "The SHA-256 of the current .wslconfig (or absent) equals step.wslconfig_file.sha256: the file did not change since the plan was shown."}},
+    {"id": "wsl_restart_confirmed", "reads": ["sprut_drained", "wsl_restart_confirmed"],
+     "fails_with": ["WSL_RESTART_REQUIRED"], "on_reject": {"WSL_RESTART_REQUIRED": {"to": "ACTION_REQUIRED", "event": "state"}},
+     "description": {"ru": "Задачи Sprut завершены (drain), и непосредственно перед перезапуском пользователь отдельно подтвердил его в диалоге, показывающем запущенные дистрибутивы WSL (CR04). Согласие с планом это подтверждение не заменяет.", "en": "Sprut tasks were drained, and right before the restart the user separately confirmed it in a dialog that lists the running WSL distributions (CR04). Plan consent does not replace this confirmation."}}
+  ],
+  "step_kinds": [
+    {
+      "kind": "enable_wsl_features",
+      "platforms": {"windows": {"privileged": true}},
+      "windows_elevated_step": "ENABLE_WSL_FEATURES",
+      "required_members": [],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": [],
+      "commands": {"windows": [
+        {"argv": ["{system32}\\dism.exe", "/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart"]}
+      ]},
+      "title": {
+        "ru": "Включить компонент Windows «Подсистема Windows для Linux»",
+        "en": "Enable the Windows feature Windows Subsystem for Linux"
+      },
+      "note": "CW03. Run by the elevated helper."
+    },
+    {
+      "kind": "enable_vm_platform",
+      "platforms": {"windows": {"privileged": true}},
+      "windows_elevated_step": "ENABLE_VM_PLATFORM",
+      "required_members": [],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": [],
+      "commands": {"windows": [
+        {"argv": ["{system32}\\dism.exe", "/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart"]}
+      ]},
+      "title": {
+        "ru": "Включить компонент Windows «Платформа виртуальной машины»",
+        "en": "Enable the Windows feature Virtual Machine Platform"
+      },
+      "note": "CW03. Run by the elevated helper."
+    },
+    {
+      "kind": "install_wsl",
+      "platforms": {"windows": {"privileged": true}},
+      "windows_elevated_step": "INSTALL_WSL",
+      "required_members": [],
+      "optional_members": ["source"],
+      "licence_required": false,
+      "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": ["https://github.com/microsoft/WSL/releases/download/"],
+      "preconditions": ["source_verified"],
+      "commands": {"windows": [
+        {"when": "source_present", "client_action": "download_source"},
+        {"when": "source_present", "client_action": "verify_source"},
+        {"when": "source_present", "argv": ["{system32}\\msiexec.exe", "/i", "{verified_file}", "/quiet", "/norestart"]},
+        {"when": "source_absent", "argv": ["{system32}\\wsl.exe", "--install", "--no-distribution"]}
+      ]},
+      "title": {
+        "ru": "Установить WSL из официального источника",
+        "en": "Install WSL from the official source"
+      },
+      "title_without_source": {
+        "ru": "Установить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш)",
+        "en": "Install WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash)"
+      },
+      "note": "CW03. With source: the client's pinned package, verified by the elevated helper. Without source: wsl.exe downloads, unverified by Sprut, and the title says so. The path is fixed at S-1; source prefix provisional, to confirm at S-1."
+    },
+    {
+      "kind": "update_wsl",
+      "platforms": {"windows": {"privileged": true}},
+      "windows_elevated_step": "UPDATE_WSL",
+      "required_members": [],
+      "optional_members": ["source"],
+      "licence_required": false,
+      "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": ["https://github.com/microsoft/WSL/releases/download/"],
+      "preconditions": ["source_verified"],
+      "commands": {"windows": [
+        {"when": "source_present", "client_action": "download_source"},
+        {"when": "source_present", "client_action": "verify_source"},
+        {"when": "source_present", "argv": ["{system32}\\msiexec.exe", "/i", "{verified_file}", "/quiet", "/norestart"]},
+        {"when": "source_absent", "argv": ["{system32}\\wsl.exe", "--update"]}
+      ]},
+      "title": {
+        "ru": "Обновить WSL",
+        "en": "Update WSL"
+      },
+      "title_without_source": {
+        "ru": "Обновить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш)",
+        "en": "Update WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash)"
+      },
+      "note": "CW03. Separate plan step for WSL_OUTDATED; source as for install_wsl."
+    },
+    {
+      "kind": "unregister_distro",
+      "platforms": {"windows": {"privileged": false}},
+      "acknowledgement": "distro_removal",
+      "required_members": ["distro"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": ["distro_owned"],
+      "commands": {"windows": [
+        {"argv": ["{system32}\\wsl.exe", "--unregister", "{distro_name}"]}
+      ]},
+      "title": {
+        "ru": "Удалить повреждённый дистрибутив WSL Sprut (данные внутри него будут потеряны)",
+        "en": "Remove the damaged Sprut WSL distribution (data inside it will be lost)"
+      },
+      "note": "CW04. Only the Sprut distribution, verified by its BasePath; needs the separate distro_removal acknowledgement; immediately followed by import_distro. An export/backup option before removal is planned."
+    },
+    {
+      "kind": "import_distro",
+      "platforms": {"windows": {"privileged": false}},
+      "required_members": ["source"],
+      "optional_members": [],
+      "licence_required": true,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": ["https://cloud-images.ubuntu.com/wsl/", "https://releases.ubuntu.com/"],
+      "preconditions": ["source_verified"],
+      "commands": {"windows": [
+        {"client_action": "download_source"},
+        {"client_action": "verify_source"},
+        {"argv": ["{system32}\\wsl.exe", "--import", "{distro_name}", "{distro_base_path}", "{verified_file}", "--version", "2"]}
+      ]},
+      "title": {
+        "ru": "Создать дистрибутив WSL Sprut из образа Ubuntu",
+        "en": "Create the Sprut WSL distribution from the Ubuntu image"
+      },
+      "note": "CW04. Pinned Ubuntu LTS rootfs, source.sha256 = SHA-256 of the archive. Source prefixes provisional, to confirm at S-1 (Q10)."
+    },
+    {
+      "kind": "configure_distro",
+      "platforms": {"windows": {"privileged": false}},
+      "required_members": [],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": [],
+      "commands": {"windows": [
+        {"install_file": {"path": "/etc/wsl.conf", "mode": "0644", "content": "[boot]\nsystemd=true\n"}},
+        {"argv": ["{system32}\\wsl.exe", "--terminate", "{distro_name}"]}
+      ]},
+      "title": {
+        "ru": "Включить systemd в дистрибутиве Sprut",
+        "en": "Enable systemd in the Sprut distribution"
+      },
+      "note": "CW05. Restarts only the Sprut distribution."
+    },
+    {
+      "kind": "apt_add_docker_repo",
+      "platforms": {"windows": {"privileged": false}, "linux": {"privileged": true}},
+      "required_members": ["source"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": ["https://download.docker.com/linux/ubuntu/"],
+      "preconditions": ["ubuntu_supported", "source_verified"],
+      "environment": {"DEBIAN_FRONTEND": "noninteractive"},
+      "commands": {
+        "windows": [
+          {"client_action": "download_source"},
+          {"client_action": "verify_source"},
+          {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/docker.asc"]},
+          {"install_file": {"path": "/etc/apt/sources.list.d/docker.list", "mode": "0644", "content": "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {codename} stable\n"}},
+          {"argv": ["/usr/bin/apt-get", "update"]}
+        ],
+        "linux": [
+          {"client_action": "download_source"},
+          {"client_action": "verify_source"},
+          {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/docker.asc"]},
+          {"install_file": {"path": "/etc/apt/sources.list.d/docker.list", "mode": "0644", "content": "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {codename} stable\n"}},
+          {"argv": ["/usr/bin/apt-get", "update"]}
+        ]
+      },
+      "title": {
+        "ru": "Подключить официальный apt-репозиторий Docker",
+        "en": "Add the official Docker apt repository"
+      },
+      "note": "Spec 7.4 item 2, CW05. source = repository signing key; the key is trusted only for this repository (signed-by), never added to the global trust store. Source prefix provisional, to confirm at S-1."
+    },
+    {
+      "kind": "install_docker_engine",
+      "platforms": {"windows": {"privileged": false}, "linux": {"privileged": true}},
+      "required_members": [],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": ["ubuntu_supported"],
+      "environment": {"DEBIAN_FRONTEND": "noninteractive"},
+      "commands": {
+        "windows": [
+          {"argv": ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "docker-ce", "docker-ce-cli", "containerd.io"]}
+        ],
+        "linux": [
+          {"argv": ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "docker-ce", "docker-ce-cli", "containerd.io"]}
+        ]
+      },
+      "title": {
+        "ru": "Установить Docker Engine",
+        "en": "Install Docker Engine"
+      },
+      "note": "Spec 7.4 item 2, CW05. Package versions are those of the repository at run time (apt verifies them with the scoped key). Conflicting packages are never removed automatically (ACTION_REQUIRED). dockerd listens only on its unix socket: no daemon.json hosts entry with tcp://, no -H tcp:// (checked in ENGINE_CHECK)."
+    },
+    {
+      "kind": "add_user_to_docker_group",
+      "platforms": {"linux": {"privileged": true}},
+      "acknowledgement": "docker_group",
+      "required_members": ["target_user"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "always", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": ["target_user_current"],
+      "commands": {"linux": [
+        {"argv": ["/usr/sbin/usermod", "--append", "--groups", "docker", "{target_user}"]}
+      ]},
+      "title": {
+        "ru": "Добавить пользователя в группу docker (равносильно правам root)",
+        "en": "Add the user to the docker group (equivalent to root access)"
+      },
+      "note": "Spec 7.4 item 3. Never silently: separate docker_group acknowledgement; a new login is required afterwards (RELOGIN_REQUIRED, exit code 5)."
+    },
+    {
+      "kind": "install_nvidia_toolkit",
+      "platforms": {"windows": {"privileged": false}, "linux": {"privileged": true}},
+      "required_members": ["source"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": ["https://nvidia.github.io/libnvidia-container/"],
+      "preconditions": ["ubuntu_supported", "source_verified"],
+      "environment": {"DEBIAN_FRONTEND": "noninteractive"},
+      "commands": {
+        "windows": [
+          {"client_action": "download_source"},
+          {"client_action": "verify_source"},
+          {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/nvidia-container-toolkit.asc"]},
+          {"install_file": {"path": "/etc/apt/sources.list.d/nvidia-container-toolkit.list", "mode": "0644", "content": "deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.asc] https://nvidia.github.io/libnvidia-container/stable/deb/amd64 /\n"}},
+          {"argv": ["/usr/bin/apt-get", "update"]},
+          {"argv": ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "nvidia-container-toolkit"]},
+          {"argv": ["/usr/bin/nvidia-ctk", "runtime", "configure", "--runtime=docker"]},
+          {"argv": ["/usr/bin/systemctl", "restart", "docker.service"]}
+        ],
+        "linux": [
+          {"client_action": "download_source"},
+          {"client_action": "verify_source"},
+          {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/nvidia-container-toolkit.asc"]},
+          {"install_file": {"path": "/etc/apt/sources.list.d/nvidia-container-toolkit.list", "mode": "0644", "content": "deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.asc] https://nvidia.github.io/libnvidia-container/stable/deb/amd64 /\n"}},
+          {"argv": ["/usr/bin/apt-get", "update"]},
+          {"argv": ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "nvidia-container-toolkit"]},
+          {"argv": ["/usr/bin/nvidia-ctk", "runtime", "configure", "--runtime=docker"]},
+          {"argv": ["/usr/bin/systemctl", "restart", "docker.service"]}
+        ]
+      },
+      "title": {
+        "ru": "Установить NVIDIA Container Toolkit",
+        "en": "Install the NVIDIA Container Toolkit"
+      },
+      "note": "Spec 7.4 item 1, CW09. Optional, by separate consent; source = repository signing key, scoped with signed-by. The NVIDIA driver is never installed or replaced. Source prefix provisional, to confirm at S-1."
+    },
+    {
+      "kind": "start_engine",
+      "platforms": {"windows": {"privileged": false}, "linux": {"privileged": true}},
+      "required_members": [],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": [],
+      "commands": {
+        "windows": [{"argv": ["/usr/bin/systemctl", "enable", "--now", "docker.service"]}],
+        "linux": [{"argv": ["/usr/bin/systemctl", "enable", "--now", "docker.service"]}]
+      },
+      "title": {
+        "ru": "Запустить Docker Engine и включить его автозапуск",
+        "en": "Start Docker Engine and enable it at boot"
+      },
+      "note": "Windows: inside the Sprut distribution."
+    },
+    {
+      "kind": "write_wslconfig",
+      "platforms": {"windows": {"privileged": false}},
+      "required_members": ["wslconfig", "wslconfig_file"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "always"},
+      "source_url_prefixes": [],
+      "preconditions": ["wslconfig_unchanged"],
+      "commands": {"windows": [{"client_action": "edit_wslconfig"}]},
+      "title": {
+        "ru": "Изменить ресурсы WSL в .wslconfig (действует на все дистрибутивы WSL)",
+        "en": "Change WSL resources in .wslconfig (affects all WSL distributions)"
+      },
+      "note": "CR01-CR04. Only the managed [wsl2] keys, with backup and atomic write; wslconfig_file binds the file state shown to the user (CR03)."
+    },
+    {
+      "kind": "resize_distro_disk",
+      "platforms": {"windows": {"privileged": false}},
+      "required_members": ["distro_disk_size"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": [],
+      "commands": {"windows": [
+        {"argv": ["{system32}\\wsl.exe", "--manage", "{distro_name}", "--resize", "{distro_disk_size}"]}
+      ]},
+      "title": {
+        "ru": "Изменить максимальный размер диска дистрибутива Sprut",
+        "en": "Change the maximum disk size of the Sprut distribution"
+      },
+      "note": "CR01, CR02. Sprut distribution only; never .wslconfig defaultVhdSize."
+    },
+    {
+      "kind": "restart_wsl",
+      "platforms": {"windows": {"privileged": false}},
+      "required_members": [],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": ["wsl_restart_confirmed"],
+      "commands": {"windows": [{"argv": ["{system32}\\wsl.exe", "--shutdown"]}]},
+      "title": {
+        "ru": "Перезапустить WSL (остановит все дистрибутивы WSL)",
+        "en": "Restart WSL (stops all WSL distributions)"
+      },
+      "note": "CR04. A separate confirmed action at execution time (precondition wsl_restart_confirmed), after a drain."
+    },
+    {
+      "kind": "image_pull",
+      "platforms": {"windows": {"privileged": false}, "linux": {"privileged": false}},
+      "required_members": ["image"],
+      "optional_members": [],
+      "licence_required": false,
+      "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
+      "source_url_prefixes": [],
+      "preconditions": [],
+      "commands": {"windows": [{"client_action": "engine_pull"}], "linux": [{"client_action": "engine_pull"}]},
+      "title": {
+        "ru": "Загрузить образ {repository}",
+        "en": "Download image {repository}"
+      },
+      "note": "Pull by ImageReference in the IMAGE_PULL state (guards image_allowlisted, image_in_consented_plan), not in INSTALLING."
+    }
+  ]
+}

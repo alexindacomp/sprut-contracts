@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/image-allowlist.schema.json",
+  "title": "Image allowlist",
+  "description": "Format of registry/image-allowlist.json (CF20, CF21; docs/images-and-ownership.md). The allowlist is BUNDLED: each client embeds registry/image-allowlist.json from its pinned sprut-contracts submodule at build time. It is never fetched, replaced or extended at runtime, from configuration, from a task manifest or from the coordinator; a signed updatable allowlist is a later stage and needs its own contract. Readers parse the document with the hashing restrictions of docs/canonical-json.md (strict UTF-8, integers only, no duplicate keys) and check kind = image_allowlist; unknown members are rejected. An empty `entries` array is valid and means that every pull and run is refused with IMAGE_NOT_ALLOWED (fail closed). Each digest appears at most once. The guard input `allowlist` is the list of ImageReferences `<repository>@<digest>` of the entries that apply to the running client, in document order; the guard compares whole references, i.e. (repository, digest) pairs. An entry applies when min_client_version <= client version <= max_client_version (when present). The client version is the shared Sprut client release version: Sprut Desktop and the sprut CLI use one version line. Comparison is numeric on MAJOR, MINOR, PATCH; a client pre-release (`0.3.0-rc.1`) is lower than the release with the same MAJOR.MINOR.PATCH, and pre-release identifiers are not compared further. Removing an entry from the bundled list revokes the image for every client built from it.",
+  "type": "object",
+  "required": ["kind", "schema_version", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "image_allowlist"},
+    "schema_version": {"type": "integer", "const": 1},
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["repository", "digest", "purpose", "platform", "min_client_version"],
+      "additionalProperties": false,
+      "properties": {
+        "repository": {"$ref": "#/$defs/repository"},
+        "digest": {"$ref": "#/$defs/image_digest"},
+        "purpose": {
+          "description": "diagnostic: smoke-test / doctor container; worker: training and task worker; inference: local generation backend.",
+          "enum": ["diagnostic", "worker", "inference"]
+        },
+        "platform": {
+          "description": "Container platform of the image. Only linux/amd64 is supported (spec 2).",
+          "const": "linux/amd64"
+        },
+        "min_client_version": {
+          "description": "Lowest client version (MAJOR.MINOR.PATCH, no pre-release) that may use this image. An older client treats the entry as absent.",
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})$"
+        },
+        "max_client_version": {
+          "description": "Optional highest client version (inclusive, MAJOR.MINOR.PATCH) that may use this image; a newer client treats the entry as absent.",
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})$"
+        }
+      }
+    },
+    "image_digest": {
+      "description": "ImageDigest: content digest of an image manifest, `sha256:` plus 64 lowercase hex digits. Compared as a string.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "repository": {
+      "description": "Fully qualified repository: a registry host with at least one dot (lowercase, no port), then one or more lowercase path components separated by `/`; components use `.`, `_`, `-` only between alphanumerics. At most 255 characters.",
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+(/[a-z0-9]+([._-][a-z0-9]+)*)+$"
+    }
+  }
+}

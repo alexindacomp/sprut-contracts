@@ -1,0 +1,29 @@
+{
+  "name": "wrong-kind",
+  "description": "A document of another kind is never accepted as a plan (domain separation).",
+  "document": {
+    "kind": "model_manifest",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "worker_image": "present"
+    },
+    "steps": [],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "docker_access": "docker_group",
+    "disk_estimate_bytes": 0,
+    "hash": "25328817d1f5e3f8f748d54f638717128ffc04b27c700a9a8632004c7c8a62dd"
+  },
+  "expected": "invalid",
+  "expected_error": "INVALID_KIND"
+}

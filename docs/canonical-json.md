@@ -70,7 +70,10 @@ object_hash(obj) = lowercase_hex( SHA-256( UTF-8( JCS( obj without its top-level
   case, a `sha256:` prefix) is rejected with `INVALID_HASH_MEMBER` before any
   comparison.
 - The result is 64 lowercase hexadecimal characters, with no prefix.
-- `object_hash` is defined for JSON objects only.
+- `object_hash` is defined for JSON objects only. A top-level value that is
+  not an object (an array, string, number, `true`, `false` or `null`) is
+  rejected with `INVALID_JSON`, not `INVALID_KIND`: the `kind` check applies
+  only to objects (vector `reject-object-hash-of-array`).
 - **Hash what you received.** The hash covers every member of the received
   object, including members this implementation does not know. Dropping unknown
   members is an OperationEvent-consumer rule only; it never applies before
@@ -86,8 +89,8 @@ object_hash(obj) = lowercase_hex( SHA-256( UTF-8( JCS( obj without its top-level
   not stored as a second member of the same structure: any other member would be
   part of the hashed content and could never equal the result. Other records
   refer to the structure by that value (for example
-  `sprut setup apply --plan-id <hash> --yes`). The concrete InstallationPlan
-  format is defined together with InstallationPlan.
+  `sprut setup apply --plan-id <hash> --yes`). The InstallationPlan format is
+  in `docs/installation-plan.md`; its `hash` member is required.
 
 Vectors with `"operation": "object_hash"` test this rule; vectors with
 `"operation": "canonicalize"` test plain JCS of `input`. In every vector,
@@ -129,8 +132,8 @@ category from section 5; it must not repair the input.
    (the top-level container is depth 1). Check the size before decoding and the
    depth before or while parsing (`SIZE_LIMIT`, `DEPTH_LIMIT`), so that hostile
    input cannot exhaust memory or the stack.
-7. The top-level value of `object_hash` must be an object with a valid `kind`
-   (section 2).
+7. The top-level value of `object_hash` must be an object (otherwise
+   `INVALID_JSON`) with a valid `kind` (otherwise `INVALID_KIND`), section 2.
 
 ### 3.1. Parser traps
 
@@ -168,6 +171,24 @@ before a trailing newline, so `"PROBING\n"` would pass: in Java use
 `Pattern.matches()` / `Matcher.matches()` (or `\z`), in Python `re.fullmatch`
 (or `\Z`). The OperationEvent vectors `*-trailing-newline` catch this.
 
+### 3.3. JSON Schema semantics for numbers
+
+`tools/validate.py` is the reference; Java and Go follow it, which a stock
+draft 2020-12 validator does not:
+
+1. **`"type": "integer"` accepts only number tokens without fraction or
+   exponent**: `1.0`, `1e0` are rejected (decide on the token: Go
+   `json.Decoder.UseNumber()`, Jackson `VALUE_NUMBER_FLOAT`). Every numeric
+   `const`/`enum` in `schemas/` carries `"type": "integer"`, so
+   `schema_version: 1.0` is rejected too (vectors
+   `progress-current-integral-fraction`, `schema-version-integral-fraction`).
+   `const`/`enum` compare numbers by value; with the type rule this never
+   accepts a fraction.
+2. **`object_hash` of a non-object** is `INVALID_JSON` (section 2).
+
+Hashed documents never reach these rules with a fraction: the hashing parser
+rejects `1.0` first (`NON_INTEGER_NUMBER`).
+
 ## 4. Test vectors
 
 | Directory | Content |
@@ -181,7 +202,7 @@ before a trailing newline, so `"PROBING\n"` would pass: in Java use
 
 | Category | Meaning |
 |---|---|
-| `INVALID_JSON` | Not well-formed JSON (RFC 8259), including the non-tokens `NaN`, `Infinity`, `-Infinity` and leading zeros |
+| `INVALID_JSON` | Not well-formed JSON (RFC 8259), including the non-tokens `NaN`, `Infinity`, `-Infinity` and leading zeros; also `object_hash` of a top-level value that is not an object |
 | `DUPLICATE_KEY` | An object has two members with the same name (after unescaping) |
 | `NON_INTEGER_NUMBER` | A number has a fraction or an exponent |
 | `INTEGER_OUT_OF_RANGE` | An integer is outside ±(2^53 − 1), including tokens with more than 16 digits |

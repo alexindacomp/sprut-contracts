@@ -1,0 +1,37 @@
+{
+  "description": "Ownership label vectors (registry/ownership.json, docs/images-and-ownership.md). The client profile doing the operation is `profile`. ownership_cases: labels read by inspect from an existing container, volume or network; owned=true only if managed=true and profile equals the current profile (operation_id is not checked). An unowned resource is skipped by list/cleanup and never changed (FOREIGN_RESOURCE when an operation needed to change it). caller_label_cases: extra labels requested by a caller for a new resource; refused if a key is in the reserved namespace or a key or value leaves the label charset. adoption_cases: SEC-m5, an existing labelled resource is reused only if it is in the journal and inspect shows an allowlisted image without host mounts, privileged or the Docker socket.",
+  "profile": "default",
+  "ownership_cases": [
+    {"name": "managed-and-profile", "owned": true, "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}},
+    {"name": "with-operation-id-and-other-labels", "owned": true, "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default", "io.github.alexindacomp.sprut.operation_id": "op-42", "com.example.team": "ml"}},
+    {"name": "no-labels", "note": "e.g. a user container with the same name", "owned": false, "labels": {}},
+    {"name": "managed-only", "note": "profile label missing", "owned": false, "labels": {"io.github.alexindacomp.sprut.managed": "true"}},
+    {"name": "other-profile", "note": "resources of another profile are not touched", "owned": false, "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "work"}},
+    {"name": "managed-not-true", "owned": false, "labels": {"io.github.alexindacomp.sprut.managed": "TRUE", "io.github.alexindacomp.sprut.profile": "default"}},
+    {"name": "profile-differs-in-case", "note": "values compare exactly", "owned": false, "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "Default"}},
+    {"name": "lookalike-namespace", "note": "a key that only starts like the namespace is not a Sprut label", "owned": false, "labels": {"io.github.alexindacomp.sprutx.managed": "true", "io.github.alexindacomp.sprutx.profile": "default"}}
+  ],
+  "adoption_cases": [
+    {"name": "journaled-clean-resource", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": true, "inspect": {"image_allowlisted": true, "host_bind_mounts": false, "privileged": false, "docker_socket_mounted": false}, "adoptable": true},
+    {"name": "labelled-but-not-in-journal", "note": "labels alone never make a resource reusable", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": false, "inspect": {"image_allowlisted": true, "host_bind_mounts": false, "privileged": false, "docker_socket_mounted": false}, "adoptable": false},
+    {"name": "image-not-allowlisted", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": true, "inspect": {"image_allowlisted": false, "host_bind_mounts": false, "privileged": false, "docker_socket_mounted": false}, "adoptable": false},
+    {"name": "host-bind-mount", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": true, "inspect": {"image_allowlisted": true, "host_bind_mounts": true, "privileged": false, "docker_socket_mounted": false}, "adoptable": false},
+    {"name": "privileged-container", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": true, "inspect": {"image_allowlisted": true, "host_bind_mounts": false, "privileged": true, "docker_socket_mounted": false}, "adoptable": false},
+    {"name": "docker-socket-mounted", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": true, "inspect": {"image_allowlisted": true, "host_bind_mounts": false, "privileged": false, "docker_socket_mounted": true}, "adoptable": false},
+    {"name": "other-profile-in-journal", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "work"}, "in_journal": true, "inspect": {"image_allowlisted": true, "host_bind_mounts": false, "privileged": false, "docker_socket_mounted": false}, "adoptable": false},
+    {"name": "inspect-facts-missing", "note": "fail closed", "labels": {"io.github.alexindacomp.sprut.managed": "true", "io.github.alexindacomp.sprut.profile": "default"}, "in_journal": true, "inspect": {}, "adoptable": false}
+  ],
+  "caller_label_cases": [
+    {"name": "plain-extra-label", "accepted": true, "labels": {"com.example.team": "ml"}},
+    {"name": "no-extra-labels", "accepted": true, "labels": {}},
+    {"name": "reserved-namespace-key", "accepted": false, "labels": {"io.github.alexindacomp.sprut.managed": "true"}},
+    {"name": "reserved-namespace-other-key", "accepted": false, "labels": {"io.github.alexindacomp.sprut.anything": "x"}},
+    {"name": "namespace-itself-as-key", "accepted": false, "labels": {"io.github.alexindacomp.sprut": "x"}},
+    {"name": "value-with-space", "accepted": false, "labels": {"com.example.note": "two words"}},
+    {"name": "value-with-quote", "accepted": false, "labels": {"com.example.note": "a\"b"}},
+    {"name": "value-non-ascii", "accepted": false, "labels": {"com.example.note": "спрут"}},
+    {"name": "value-with-newline", "accepted": false, "labels": {"com.example.note": "a\nb"}},
+    {"name": "empty-value", "accepted": false, "labels": {"com.example.note": ""}},
+    {"name": "key-with-space", "accepted": false, "labels": {"com.example bad": "x"}}
+  ]
+}

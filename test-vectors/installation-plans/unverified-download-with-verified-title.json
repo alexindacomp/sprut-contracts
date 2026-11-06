@@ -1,0 +1,42 @@
+{
+  "name": "unverified-download-with-verified-title",
+  "description": "Without source the title must say that wsl.exe downloads unverified (SEC-A1).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL_OUTDATED",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "steps": [
+      {
+        "id": "update-wsl",
+        "kind": "update_wsl",
+        "title": {
+          "ru": "Обновить WSL",
+          "en": "Update WSL"
+        },
+        "privileged": true,
+        "requires_reboot": true,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0
+      }
+    ],
+    "images": [],
+    "licences": [],
+    "disk_estimate_bytes": 0,
+    "hash": "f02cc65c71af8c200610905a596b5cce9d895a60404839bbcd1d849bafcf7cc0"
+  },
+  "expected": "invalid",
+  "expected_error": "TITLE_MISMATCH"
+}
