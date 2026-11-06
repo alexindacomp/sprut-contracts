@@ -1,0 +1,15 @@
+{
+  "name": "integers",
+  "description": "Integers in decimal without leading zeros, '+' or exponent; the safe range is +/-(2^53-1).",
+  "operation": "canonicalize",
+  "input": {
+    "zero": 0,
+    "one": 1,
+    "neg": -1,
+    "max_safe": 9007199254740991,
+    "min_safe": -9007199254740991,
+    "mid": 1234567890123
+  },
+  "canonical": "{\"max_safe\":9007199254740991,\"mid\":1234567890123,\"min_safe\":-9007199254740991,\"neg\":-1,\"one\":1,\"zero\":0}",
+  "sha256": "c2cac1341360917cf0aab7e8e8f5b84810d2a99921c18f7d7d353d0912a78aee"
+}

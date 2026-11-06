@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/canonical-json-invalid-vector.schema.json",
+  "title": "Rejected canonical JSON input test vector",
+  "description": "Format of test-vectors/canonical-json-invalid/*.json. The input bytes are given as exactly one of: input_text (raw JSON text, kept as a string so that the vector file's own parser cannot normalise it; encode it as UTF-8 to get the bytes), input_base64 (raw bytes, for inputs that are not valid UTF-8), or input_generated (prefix + repeat * count + suffix, UTF-8; for inputs too large to store). operation says what is attempted: canonicalize, or object_hash (which also checks kind and a stored hash). An implementation must refuse and report the error category expected_error (docs/canonical-json.md, section 5). Each vector contains exactly one violation.",
+  "type": "object",
+  "required": ["name", "description", "operation", "expected_error"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "description": {"type": "string", "minLength": 1},
+    "operation": {"enum": ["canonicalize", "object_hash"]},
+    "expected_kind": {
+      "description": "object_hash only: the kind the verifier expects at this position; a different kind is INVALID_KIND.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+    },
+    "input_text": {"type": "string"},
+    "input_base64": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$"},
+    "input_generated": {
+      "type": "object",
+      "required": ["prefix", "repeat", "count", "suffix"],
+      "additionalProperties": false,
+      "properties": {
+        "prefix": {"type": "string"},
+        "repeat": {"type": "string", "minLength": 1},
+        "count": {"type": "integer", "minimum": 1, "maximum": 16777216},
+        "suffix": {"type": "string"}
+      }
+    },
+    "expected_error": {
+      "enum": ["INVALID_JSON", "DUPLICATE_KEY", "NON_INTEGER_NUMBER", "INTEGER_OUT_OF_RANGE",
+               "NEGATIVE_ZERO", "NON_FINITE_NUMBER", "INVALID_UNICODE", "DEPTH_LIMIT", "SIZE_LIMIT",
+               "INVALID_KIND", "INVALID_HASH_MEMBER"]
+    }
+  },
+  "oneOf": [
+    {"required": ["input_text"]},
+    {"required": ["input_base64"]},
+    {"required": ["input_generated"]}
+  ]
+}

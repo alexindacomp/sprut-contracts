@@ -1,0 +1,16 @@
+{
+  "machine": "task",
+  "description": "Generic task machine (CR-18): RUNNING ends in SUCCEEDED, FAILED or CANCELLED; terminal states have no outgoing transitions (a resumed task is a new operation_id).",
+  "sequences": [
+    {"name": "task-succeeds", "expected": "allowed", "path": ["RUNNING", "SUCCEEDED"]},
+    {"name": "task-fails", "expected": "allowed", "path": ["RUNNING", "FAILED"]},
+    {"name": "task-cancelled", "expected": "allowed", "path": ["RUNNING", "CANCELLED"]},
+    {"name": "failed-task-restarted-in-place", "expected": "rejected", "note": "resume is a new operation, not FAILED -> RUNNING", "path": ["RUNNING", "FAILED", "RUNNING"]}
+  ],
+  "cases": [
+    {"from": "SUCCEEDED", "to": "RUNNING", "expected": "rejected"},
+    {"from": "CANCELLED", "to": "RUNNING", "expected": "rejected"},
+    {"from": "FAILED", "to": "SUCCEEDED", "expected": "rejected"},
+    {"from": "RUNNING", "to": "RUNNING", "expected": "rejected", "note": "no self-transition; progress is reported by progress events"}
+  ]
+}

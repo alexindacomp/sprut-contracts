@@ -1,0 +1,12 @@
+{
+  "name": "key-ordering-flat",
+  "description": "Members are sorted by key.",
+  "operation": "canonicalize",
+  "input": {
+    "b": 2,
+    "a": 1,
+    "c": 3
+  },
+  "canonical": "{\"a\":1,\"b\":2,\"c\":3}",
+  "sha256": "e6a3385fb77c287a712e7f406a451727f0625041823ecf23bea7ef39b2e39805"
+}

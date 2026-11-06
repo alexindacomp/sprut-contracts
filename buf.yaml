@@ -1,0 +1,11 @@
+# buf configuration (https://buf.build/docs/configuration/v2/buf-yaml).
+# Not run in CI yet: buf is introduced together with the first gRPC services (S1).
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

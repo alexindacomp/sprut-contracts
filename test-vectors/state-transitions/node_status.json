@@ -1,0 +1,28 @@
+{
+  "machine": "node_status",
+  "description": "Node status (CF42, CF43). Planned leave goes through DRAINING; DRAINING never accepts a job.",
+  "sequences": [
+    {"name": "join-work-and-leave", "expected": "allowed",
+     "path": ["OFFLINE", "CONNECTING", "REGISTERED", "READY", "BUSY", "READY", "BUSY", "DRAINING", "OFFLINE"]},
+    {"name": "idle-leave", "expected": "allowed",
+     "path": ["OFFLINE", "CONNECTING", "REGISTERED", "READY", "DRAINING", "OFFLINE"]},
+    {"name": "draining-accepts-job", "expected": "rejected",
+     "path": ["OFFLINE", "CONNECTING", "REGISTERED", "READY", "DRAINING", "BUSY"]},
+    {"name": "skip-registration", "expected": "rejected",
+     "path": ["OFFLINE", "CONNECTING", "READY"]}
+  ],
+  "cases": [
+    {"from": "CONNECTING", "to": "OFFLINE", "expected": "allowed", "note": "e.g. AUTH_REJECTED"},
+    {"from": "REGISTERED", "to": "OFFLINE", "expected": "allowed"},
+    {"from": "READY", "to": "OFFLINE", "expected": "allowed", "note": "lease lost or node revoked"},
+    {"from": "BUSY", "to": "OFFLINE", "expected": "allowed", "note": "lease lost (CF62) or node revoked (CF67)"},
+    {"from": "OFFLINE", "to": "READY", "expected": "rejected", "note": "CF05: joining is explicit"},
+    {"from": "OFFLINE", "to": "BUSY", "expected": "rejected"},
+    {"from": "CONNECTING", "to": "BUSY", "expected": "rejected"},
+    {"from": "REGISTERED", "to": "BUSY", "expected": "rejected"},
+    {"from": "DRAINING", "to": "BUSY", "expected": "rejected", "note": "CF43: draining stops accepting jobs"},
+    {"from": "DRAINING", "to": "READY", "expected": "rejected"},
+    {"from": "BUSY", "to": "CONNECTING", "expected": "rejected"},
+    {"from": "DRAINING", "to": "FAILED", "expected": "rejected", "note": "FAILED is not a node status in CF42"}
+  ]
+}

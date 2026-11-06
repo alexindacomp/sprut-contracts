@@ -1,0 +1,14 @@
+{
+  "machine": "wsl_availability",
+  "description": "WSL2 availability (CW01). Only WSL_MISSING and WSL_OUTDATED can be moved to WSL2_READY by the client's own plan; virtualization, policy and unsupported builds need a human or another platform.",
+  "cases": [
+    {"from": "WSL_MISSING", "to": "WSL2_READY", "expected": "allowed", "note": "CW03 install"},
+    {"from": "WSL_OUTDATED", "to": "WSL2_READY", "expected": "allowed", "note": "CW03 update"},
+    {"from": "VIRTUALIZATION_DISABLED", "to": "WSL2_READY", "expected": "rejected", "note": "BIOS/UEFI change is a human action"},
+    {"from": "UNSUPPORTED_PROFILE", "to": "WSL2_READY", "expected": "rejected"},
+    {"from": "WSL2_READY", "to": "WSL_OUTDATED", "expected": "rejected", "note": "CW02: a ready WSL2 is never reinstalled or downgraded"},
+    {"from": "WSL2_READY", "to": "WSL_MISSING", "expected": "rejected"},
+    {"from": "WSL_MISSING", "to": "WSL_OUTDATED", "expected": "rejected"},
+    {"from": "WSL_OUTDATED", "to": "WSL_MISSING", "expected": "rejected"}
+  ]
+}

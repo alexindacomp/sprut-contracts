@@ -1,0 +1,12 @@
+{
+  "name": "object-hash-keeps-differently-cased-hash",
+  "description": "Only the exact name \"hash\" is excluded; \"Hash\" is an ordinary member and is hashed (and sorts before \"kind\": 'H' is 0x48).",
+  "operation": "object_hash",
+  "input": {
+    "kind": "example_record",
+    "Hash": "kept",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "canonical": "{\"Hash\":\"kept\",\"kind\":\"example_record\"}",
+  "sha256": "07a4977ff8292d8cc32e944765aef0c552fad1efd141fc80ab300c58a640d532"
+}

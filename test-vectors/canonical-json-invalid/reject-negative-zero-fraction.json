@@ -1,0 +1,7 @@
+{
+  "name": "reject-negative-zero-fraction",
+  "description": "-0.0 has a fraction: NON_INTEGER_NUMBER (NEGATIVE_ZERO is for the integer token -0).",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":-0.0}",
+  "expected_error": "NON_INTEGER_NUMBER"
+}

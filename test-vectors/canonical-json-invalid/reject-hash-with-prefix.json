@@ -1,0 +1,7 @@
+{
+  "name": "reject-hash-with-prefix",
+  "description": "A stored top-level hash has no algorithm prefix.",
+  "operation": "object_hash",
+  "input_text": "{\"kind\":\"example_record\",\"hash\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+  "expected_error": "INVALID_HASH_MEMBER"
+}

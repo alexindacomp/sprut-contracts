@@ -1,0 +1,7 @@
+{
+  "name": "reject-infinity",
+  "description": "The token -Infinity is not RFC 8259 JSON, so the text is malformed.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":-Infinity}",
+  "expected_error": "INVALID_JSON"
+}

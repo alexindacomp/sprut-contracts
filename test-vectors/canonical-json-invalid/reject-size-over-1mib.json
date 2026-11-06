@@ -1,0 +1,12 @@
+{
+  "name": "reject-size-over-1mib",
+  "description": "Input larger than 1 MiB (1048576 bytes, spec 9 control payload limit) is rejected before parsing.",
+  "operation": "canonicalize",
+  "input_generated": {
+    "prefix": "[\"",
+    "repeat": "a",
+    "count": 1048576,
+    "suffix": "\"]"
+  },
+  "expected_error": "SIZE_LIMIT"
+}

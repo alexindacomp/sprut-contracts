@@ -1,0 +1,7 @@
+{
+  "name": "reject-negative-zero",
+  "description": "-0 is rejected.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":-0}",
+  "expected_error": "NEGATIVE_ZERO"
+}

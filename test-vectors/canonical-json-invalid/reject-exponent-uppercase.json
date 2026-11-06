@@ -1,0 +1,7 @@
+{
+  "name": "reject-exponent-uppercase",
+  "description": "Upper-case exponent notation is rejected.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1E3}",
+  "expected_error": "NON_INTEGER_NUMBER"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "object-hash-domain-installation-plan",
+  "description": "Domain separation: same content as object-hash-domain-model-manifest except kind; the hashes differ.",
+  "operation": "object_hash",
+  "expected_kind": "installation_plan",
+  "input": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "steps": []
+  },
+  "canonical": "{\"kind\":\"installation_plan\",\"schema_version\":1,\"steps\":[]}",
+  "sha256": "97a3148e1b288b65c0a7af8b9fb9a88ddedac2cd8ea813a2a578b44dfa1d7f80"
+}

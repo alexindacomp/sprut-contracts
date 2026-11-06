@@ -1,0 +1,10 @@
+{
+  "name": "string-escaping",
+  "description": "Only '\"', '\\\\' and U+0000..U+001F are escaped: short forms \\b \\t \\n \\f \\r where they exist, otherwise \\u00XX with lowercase hex. '/', U+007F and U+2028 are written raw.",
+  "operation": "canonicalize",
+  "input": {
+    "s": "quote\" backslash\\ slash/ tab\t nl\n cr\r bs\b ff\f nul\u0000 esc\u001b us\u001f del\u007f ls\u2028"
+  },
+  "canonical": "{\"s\":\"quote\\\" backslash\\\\ slash/ tab\\t nl\\n cr\\r bs\\b ff\\f nul\\u0000 esc\\u001b us\\u001f del\u007f ls\u2028\"}",
+  "sha256": "9c4d5eb403e883f1eb7f90a2d7c54b52bc2ac8b94e1d4478b31bafcc1971de80"
+}

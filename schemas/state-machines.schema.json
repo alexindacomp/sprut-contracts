@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/state-machines.schema.json",
+  "title": "Sprut state machines",
+  "description": "Format of registry/state-machines.json. A transition not listed is forbidden.",
+  "type": "object",
+  "required": ["schema_version", "machines", "operation_kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "machines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/machine"}
+    },
+    "operation_kinds": {
+      "description": "Operation kinds used as OperationEvent.operation and as the exit-resolution input `operation`; each maps to the lifecycle machine whose states it uses.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "machine", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "machine": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "description": {"$ref": "#/$defs/localized"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "state_name": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "machine": {
+      "type": "object",
+      "required": ["id", "kind", "title", "spec_refs", "semantics", "initial", "terminal", "states", "transitions"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+        "kind": {
+          "description": "lifecycle: a persisted state with an initial state; every state must be reachable from initial and reach a terminal state. probe_result: a classification produced by a probe; every state is a possible probe output, transitions list only what the client's own plan steps can achieve.",
+          "enum": ["lifecycle", "probe_result"]
+        },
+        "title": {"type": "string", "minLength": 1},
+        "spec_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "semantics": {
+          "description": "Normative notes on how to read initial/terminal/waiting for this machine.",
+          "$ref": "#/$defs/localized"
+        },
+        "decisions": {
+          "description": "Product decisions that resolved spec ambiguities for this machine.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref", "date", "decided_by", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "ref": {"type": "string", "minLength": 1},
+              "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+              "decided_by": {"enum": ["user", "orchestrator"]},
+              "text": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "guard_context": {
+          "description": "Inputs that guard predicates read. Implementations evaluate guards against these values at the moment of the transition.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+              "description": {"$ref": "#/$defs/localized"}
+            }
+          }
+        },
+        "guard_predicates": {
+          "description": "Named predicates. Their exact evaluation is implemented identically in every client; tools/validate.py is the reference and test-vectors/guards/ the conformance set. requires_consent=true means the predicate can only hold while consent to the plan exists.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "reads", "requires_consent", "fails_with", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+              "reads": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}},
+              "requires_consent": {"type": "boolean"},
+              "fails_with": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/state_name"}},
+              "description": {"$ref": "#/$defs/localized"}
+            }
+          }
+        },
+        "guards": {
+          "description": "Conditions on transitions. All checks must hold, in order; the first failing check gives the reason code of the rejection. Missing inputs fail (fail closed).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "checks", "on_reject"],
+            "additionalProperties": false,
+            "properties": {
+              "from": {"$ref": "#/$defs/state_name"},
+              "to": {"$ref": "#/$defs/state_name"},
+              "checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}},
+              "on_reject": {
+                "description": "What happens after a rejection, per reason code of the failing check: move along an existing transition from `from` (`to`), or stay in `from`, which must be a waiting state (`stay`). `event` is the type of the OperationEvent emitted. Every reason code in the fails_with of the guard's checks must be listed.",
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["event"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": {"$ref": "#/$defs/state_name"},
+                    "stay": {"const": true},
+                    "event": {"enum": ["error", "state"]}
+                  },
+                  "oneOf": [
+                    {"required": ["to"]},
+                    {"required": ["stay"]}
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "effects": {
+          "description": "Side effects on the guard context. on=enter_state: when `state` is entered; on=user_consent: when the user gives explicit consent while in `state`.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["on", "state", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "on": {"enum": ["enter_state", "user_consent"]},
+              "state": {"$ref": "#/$defs/state_name"},
+              "action": {"enum": ["clear_consent", "set_consented_plan_id"]},
+              "note": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "initial": {"anyOf": [{"$ref": "#/$defs/state_name"}, {"type": "null"}]},
+        "terminal": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/state_name"}},
+        "waiting": {
+          "description": "States in which the operation is paused waiting for something outside the client (consent, privilege, reboot, human action).",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/state_name"}
+        },
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"$ref": "#/$defs/state_name"},
+              "description": {"$ref": "#/$defs/localized"},
+              "reason_code": {
+                "description": "Reason code reported while in this state, if fixed by the spec.",
+                "$ref": "#/$defs/state_name"
+              }
+            }
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "additionalProperties": false,
+            "properties": {
+              "from": {"$ref": "#/$defs/state_name"},
+              "to": {"$ref": "#/$defs/state_name"},
+              "note": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

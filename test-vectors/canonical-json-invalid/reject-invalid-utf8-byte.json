@@ -1,0 +1,7 @@
+{
+  "name": "reject-invalid-utf8-byte",
+  "description": "Byte 0xFF can never occur in UTF-8: {\"a\":\"<0xFF>\"}.",
+  "operation": "canonicalize",
+  "input_base64": "eyJhIjoi/yJ9",
+  "expected_error": "INVALID_UNICODE"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "reject-duplicate-key",
+  "description": "Duplicate member names are rejected, not resolved last-wins.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1,\"a\":2}",
+  "expected_error": "DUPLICATE_KEY"
+}

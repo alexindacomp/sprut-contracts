@@ -1,0 +1,7 @@
+{
+  "name": "reject-trailing-comma",
+  "description": "Malformed JSON is rejected.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":1,}",
+  "expected_error": "INVALID_JSON"
+}

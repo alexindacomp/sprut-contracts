@@ -1,0 +1,22 @@
+{
+  "name": "key-ordering-nested",
+  "description": "Sorting applies recursively to nested objects, including objects inside arrays.",
+  "operation": "canonicalize",
+  "input": {
+    "z": {
+      "y": 1,
+      "x": [
+        {
+          "b": 1,
+          "a": 2
+        }
+      ]
+    },
+    "a": {
+      "d": null,
+      "c": true
+    }
+  },
+  "canonical": "{\"a\":{\"c\":true,\"d\":null},\"z\":{\"x\":[{\"a\":2,\"b\":1}],\"y\":1}}",
+  "sha256": "83108953e332f6a52701a183c6546460d23029e33c085d2f8d80a57892b5ca8d"
+}

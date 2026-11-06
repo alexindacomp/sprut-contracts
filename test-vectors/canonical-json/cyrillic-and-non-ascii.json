@@ -1,0 +1,14 @@
+{
+  "name": "cyrillic-and-non-ascii",
+  "description": "Non-ASCII characters (Cyrillic, CJK, emoji, accented Latin) are written as raw UTF-8, never as \\u escapes; backslashes in a Windows path are escaped.",
+  "operation": "canonicalize",
+  "input": {
+    "имя": "Спрут",
+    "путь": "C:\\Users\\Алексей\\Мои документы",
+    "emoji": "🐙",
+    "cjk": "中文",
+    "accent": "café"
+  },
+  "canonical": "{\"accent\":\"café\",\"cjk\":\"中文\",\"emoji\":\"🐙\",\"имя\":\"Спрут\",\"путь\":\"C:\\\\Users\\\\Алексей\\\\Мои документы\"}",
+  "sha256": "ce98743e79ebfd141f9819f0de8bd1f7ecf91c63e432b0df563776ac4e9180ec"
+}

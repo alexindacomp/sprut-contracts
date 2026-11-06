@@ -1,0 +1,7 @@
+{
+  "name": "reject-leading-zero",
+  "description": "A leading zero is not RFC 8259 JSON.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":01}",
+  "expected_error": "INVALID_JSON"
+}

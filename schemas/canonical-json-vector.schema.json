@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/canonical-json-vector.schema.json",
+  "title": "Canonical JSON test vector",
+  "description": "Format of test-vectors/canonical-json/*.json. canonical = JCS(input) for operation=canonicalize, or JCS(input without its top-level \"hash\" member) for operation=object_hash; sha256 = lowercase hex SHA-256 of the UTF-8 bytes of canonical. See docs/canonical-json.md.",
+  "type": "object",
+  "required": ["name", "description", "operation", "input", "canonical", "sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "description": {"type": "string", "minLength": 1},
+    "operation": {"enum": ["canonicalize", "object_hash"]},
+    "expected_kind": {
+      "description": "object_hash only: the kind the verifier expects at this position; a different kind is INVALID_KIND.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+    },
+    "input": true,
+    "canonical": {"type": "string"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "if": {"properties": {"operation": {"const": "object_hash"}}},
+  "then": {"properties": {"input": {"type": "object"}}}
+}

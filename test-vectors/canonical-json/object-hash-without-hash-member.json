@@ -1,0 +1,12 @@
+{
+  "name": "object-hash-without-hash-member",
+  "description": "object_hash of an object that has no \"hash\" member equals plain canonicalization.",
+  "operation": "object_hash",
+  "input": {
+    "kind": "example_record",
+    "b": 1,
+    "a": 2
+  },
+  "canonical": "{\"a\":2,\"b\":1,\"kind\":\"example_record\"}",
+  "sha256": "23783afe4f38bf6ee7f9e09703db5ae3046b15b7b2d308a5c5d031c08bdcbeef"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "reject-lone-surrogate",
+  "description": "A lone UTF-16 surrogate escape is not valid Unicode.",
+  "operation": "canonicalize",
+  "input_text": "{\"a\":\"\\ud800\"}",
+  "expected_error": "INVALID_UNICODE"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "object-hash-excludes-top-level-hash",
+  "description": "object_hash removes only the top-level member named exactly \"hash\"; nested \"hash\" members and keys that merely start with \"hash\" are kept. The top-level \"kind\" is hashed.",
+  "operation": "object_hash",
+  "input": {
+    "schema_version": 1,
+    "kind": "example_record",
+    "name": "example",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash_algorithm": "sha256",
+    "steps": [
+      {
+        "id": "install_engine",
+        "hash": "abc"
+      }
+    ]
+  },
+  "canonical": "{\"hash_algorithm\":\"sha256\",\"kind\":\"example_record\",\"name\":\"example\",\"schema_version\":1,\"steps\":[{\"hash\":\"abc\",\"id\":\"install_engine\"}]}",
+  "sha256": "85c6fb3f31d78bb242939f39b48bd91ba67f81825ea899056f3db99d32ecf2af"
+}

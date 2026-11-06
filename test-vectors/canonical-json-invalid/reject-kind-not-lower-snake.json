@@ -1,0 +1,7 @@
+{
+  "name": "reject-kind-not-lower-snake",
+  "description": "kind must be a lower_snake_case string.",
+  "operation": "object_hash",
+  "input_text": "{\"kind\":\"Installation Plan\"}",
+  "expected_error": "INVALID_KIND"
+}

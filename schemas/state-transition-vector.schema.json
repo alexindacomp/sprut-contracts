@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/state-transition-vector.schema.json",
+  "title": "State transition test vectors",
+  "description": "Format of test-vectors/state-transitions/*.json. A case is a single transition and tests the graph only. A sequence is a path whose every step must be allowed (expected=allowed) or at least one step must be rejected (expected=rejected); for sequences the consent abstraction of the guards also applies: a step whose guard needs consent is allowed only if WAITING_FOR_CONSENT was entered after the last clear_consent effect (a sequence starts without consent). Exact guard evaluation is tested by test-vectors/guards/. State names in rejected vectors may be unknown on purpose.",
+  "type": "object",
+  "required": ["machine", "description", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "machine": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+    "description": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1},
+          "expected": {"enum": ["allowed", "rejected"]},
+          "note": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "path": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+          "expected": {"enum": ["allowed", "rejected"]},
+          "starts_at_initial": {
+            "description": "Default true for lifecycle machines: an allowed sequence starts at the initial state. Set false for a fragment that starts mid-way.",
+            "type": "boolean"
+          },
+          "note": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

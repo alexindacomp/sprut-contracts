@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/operation-event.schema.json",
+  "title": "OperationEvent",
+  "description": "Event emitted by the client core for GUI/CLI (SPRUT-CLIENT-SPECIFICATION 7.1 item 4, 8.1). In `sprut --json` long operations write one event per line (JSON Lines) to stdout; stdout carries nothing but these events (and the single result object of short commands): child processes never inherit the CLI's stdout, their output goes to the technical log. Optional members are omitted when absent; null is never used. In every event, progress.current <= progress.total when both are present. PRODUCER conformance: an emitted event matches this schema exactly (no other members); reason_code is in registry/reason-codes.json; operation is a registered operation kind and state is a state of its machine (operation_kinds in registry/state-machines.json). CONSUMER behaviour: a consumer first drops members it does not know (top level and inside progress; later minor versions may add optional members within the same schema_version), then validates against this schema; it accepts well-formed reason codes, operations and states missing from its copy of the registries (newer contracts) and treats an unknown reason code as a generic error (CLI exit code fallback 1). A line that fails validation is reported as a diagnostic (stderr or log), never silently dropped. Consumers never derive readiness or consent from the event stream alone: the BootstrapJournal and a fresh probe are authoritative. Any member that changes a security or consent decision requires a new schema_version, never a minor addition. Everything else that fails this schema is rejected by both.",
+  "type": "object",
+  "required": ["schema_version", "type", "operation_id", "operation", "state", "message", "ts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Major version of the event format. A consumer rejects an unknown value.",
+      "const": 1
+    },
+    "type": {
+      "description": "progress: work advanced within the current state; state: the operation entered `state`; result: final outcome of the operation; error: the operation failed or needs action, reason_code is required.",
+      "enum": ["progress", "state", "result", "error"]
+    },
+    "operation_id": {
+      "description": "Identifier of the operation (CF01). Opaque to consumers.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "operation": {
+      "description": "Operation kind from operation_kinds in registry/state-machines.json (e.g. bootstrap, node_status, model_pull, mode_switch); it selects the lifecycle machine whose states `state` uses (bootstrap, node_status or the generic task). Required: an operation kind that is not registered cannot emit events until it is added here.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+    },
+    "state": {
+      "description": "Current state of the operation, UPPER_SNAKE_CASE; a state of the machine that operation_kinds maps `operation` to. Always interpreted together with `operation`.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+    },
+    "reason_code": {
+      "description": "Code from registry/reason-codes.json. Required for type=error; may accompany other types (e.g. state ACTION_REQUIRED).",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+    },
+    "message": {
+      "description": "Human-readable text authored by the client in its UI language (never raw subprocess output). At most 1024 Unicode code points (not UTF-16 units: Java must count with String.codePointCount), no control characters (U+0000-U+001F, U+007F-U+009F), no zero-width or BOM characters (U+200B-U+200F, U+FEFF), no line/paragraph separators (U+2028, U+2029) and no bidi embedding/override/isolate controls (U+202A-U+202E, U+2066-U+2069). Not for machine parsing; may be empty. Must not contain secrets.",
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^[^\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]*$"
+    },
+    "ts": {
+      "description": "Event time, RFC 3339 in UTC with the `Z` suffix, seconds 00-59 and 0-9 fractional second digits, e.g. 2026-11-06T10:15:30.123Z.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$"
+    },
+    "progress": {
+      "description": "Optional progress within the current state.",
+      "type": "object",
+      "required": ["current"],
+      "additionalProperties": false,
+      "properties": {
+        "current": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "total": {
+          "description": "Omitted when unknown. When present, current <= total (checked outside JSON Schema).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unit": {
+          "description": "Unit of current/total, lower_snake_case, e.g. bytes, steps, items.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+        },
+        "step": {
+          "description": "Identifier of the plan step or sub-step being executed; client-authored, 1-128 code points, the same forbidden characters as message.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[^\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]*$"
+        }
+      }
+    }
+  },
+  "if": {"properties": {"type": {"const": "error"}}, "required": ["type"]},
+  "then": {"required": ["reason_code"]}
+}

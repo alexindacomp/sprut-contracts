@@ -1,0 +1,17 @@
+{
+  "name": "booleans-and-null",
+  "description": "Literals true, false and null.",
+  "operation": "canonicalize",
+  "input": {
+    "t": true,
+    "f": false,
+    "n": null,
+    "arr": [
+      true,
+      false,
+      null
+    ]
+  },
+  "canonical": "{\"arr\":[true,false,null],\"f\":false,\"n\":null,\"t\":true}",
+  "sha256": "e663733a1258b354b27c33555c7e393f51caa498f77f2aa6918623e2487d806f"
+}

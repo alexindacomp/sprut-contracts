@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "machines": [
+    {
+      "id": "bootstrap",
+      "kind": "lifecycle",
+      "title": "Bootstrap of the client profile (environment preparation)",
+      "spec_refs": ["CF13", "CF15", "CF16", "CF17", "06A-STAGE-MINUS-1-CLIENT 5", "03-CONTRACTS 1", "TC16", "TC17", "TC27", "TC28", "TC31", "TC43"],
+      "semantics": {
+        "ru": "Состояние профиля хранится в BootstrapJournal. terminal — подготовка завершена (READY) или остановлена (FAILED, CANCELLED); выход из terminal-состояния (повторная проверка, resume, изменение конфигурации runtime) всегда идёт через PROBING и начинает новую операцию. waiting — подготовка приостановлена и ждёт согласия, прав, перезагрузки или действия человека. Не перечисленный переход запрещён; переход, у которого есть guards, разрешён только если выполнены все его guards (иначе он отклоняется с reason_code первого невыполненного guard; при нехватке данных guard считается невыполненным), и после отклонения операция переходит туда, куда указывает on_reject этого guard для данного reason_code (или остаётся в waiting-состоянии), с событием указанного типа. ДЕЙСТВИЕ — любой шаг, который скачивает, устанавливает, повышает права или изменяет хост, включая загрузку worker-образа (IMAGE_PULL) и любые изменения WSL или engine; проверка только для чтения действием не является. Каждое действие выполняется только по согласию на точный plan_id. Каждый шаг, выполняемый в INSTALLING (с правами или без), должен быть шагом документа плана, object_hash которого равен consented_plan_id. План без действий (engine готов и образ уже есть по digest) идёт PLAN_READY → ENGINE_CHECK → SMOKE_TEST без согласия; IMAGE_PULL и INSTALLING достижимы только через WAITING_FOR_CONSENT. Smoke test и любой запуск worker выполняются в явном режиме без загрузки образа (например, --pull=never): неявная загрузка не может обойти guard IMAGE_PULL. Журнал никогда не используется, чтобы продолжить выполнение: при старте процесса или после перезапуска компьютера в любом незавершённом состоянии, включая PLAN_READY и WAITING_FOR_CONSENT, resume начинается с PROBING и клиент перепроверяет хост (CF15, CF18). Согласие пользователя устанавливает consented_plan_id в заново вычисленный object_hash именно того плана, который был ему показан (effect set_consented_plan_id); вход в PROBING аннулирует согласие (effect clear_consent). Согласие привязано к plan_id и не переносится: после перезагрузки или любого resume новый или перепроверенный план всегда требует нового явного согласия, даже если его шаги — подмножество ранее согласованного плана (решение пользователя от 2026-11-06). Перед входом в INSTALLING план пересчитывается и его plan_id сравнивается с согласованным (guard consent_matches_plan, иначе PLAN_STALE).",
+        "en": "The profile state is persisted in the BootstrapJournal. terminal: setup finished (READY) or stopped (FAILED, CANCELLED); leaving a terminal state (re-check, resume, runtime configuration change) always goes through PROBING and starts a new operation. waiting: setup is paused for consent, privileges, a reboot or a human action. Any transition not listed is forbidden; a transition with guards is allowed only if all its guards hold (otherwise it is rejected with the reason_code of the first failing guard; a guard whose inputs are missing fails), and after a rejection the operation moves to the state given by the guard's on_reject entry for that reason_code (or stays in its waiting state), emitting an event of the given type. An ACTION is any step that downloads, installs, elevates or changes the host, including the worker image pull (IMAGE_PULL) and any WSL or engine change; read-only verification is not an action. Every action runs only under consent to the exact plan_id. Every step executed in INSTALLING (privileged or not) must be a step of the plan document whose object_hash equals consented_plan_id. A plan with zero actions (engine ready and image already present by digest) goes PLAN_READY -> ENGINE_CHECK -> SMOKE_TEST without consent; IMAGE_PULL and INSTALLING are reachable only through WAITING_FOR_CONSENT. The smoke test and every worker run use an explicit no-pull mode (e.g. --pull=never), so no implicit download can bypass the IMAGE_PULL guard. The journal is never used to continue execution: when the process starts, or after a computer restart, in any unfinished state including PLAN_READY and WAITING_FOR_CONSENT, resume starts in PROBING and the client re-verifies the host (CF15, CF18). User consent sets consented_plan_id to the recomputed object_hash of the exact plan displayed to the user (effect set_consented_plan_id); entering PROBING invalidates consent (effect clear_consent). Consent is bound to plan_id and never carried over: after a reboot or any resume, the new or re-probed plan always needs a fresh explicit consent, even if its steps are a subset of the plan approved earlier (user decision of 2026-11-06). Before entering INSTALLING the plan is recomputed and its plan_id compared with the consented one (guard consent_matches_plan, otherwise PLAN_STALE)."
+      },
+      "decisions": [
+        {
+          "ref": "CR-13",
+          "date": "2026-11-06",
+          "decided_by": "user",
+          "text": "After a reboot or any resume a new or re-probed plan always needs a fresh explicit consent, even if its steps are a subset of the earlier approved plan. Consent is bound to plan_id; no carry-over."
+        },
+        {
+          "ref": "SEC-M1",
+          "date": "2026-11-06",
+          "decided_by": "orchestrator",
+          "text": "An action is any step that downloads, installs, elevates or changes the host, including the worker image pull and any WSL/engine change. Read-only verification is not an action."
+        },
+        {
+          "ref": "CR-17",
+          "date": "2026-11-06",
+          "decided_by": "orchestrator",
+          "text": "Orchestrator decision 2026-11-06, conservative; FAILED for policy/integrity violations. On a rejected guard: PLAN_READY->ENGINE_CHECK CONSENT_REQUIRED -> WAITING_FOR_CONSENT; WAITING_FOR_CONSENT->INSTALLING CONSENT_REQUIRED -> stay, PLAN_STALE -> PROBING; WAITING_FOR_PRIVILEGE->INSTALLING PRIVILEGE_REQUIRED -> stay (an explicit decline uses ->CANCELLED); ENGINE_CHECK->IMAGE_PULL CONSENT_REQUIRED -> PROBING; CONSENT_REQUIRED or PLAN_STALE on INSTALLING<->WAITING_FOR_PRIVILEGE -> FAILED; IMAGE_NOT_ALLOWED on any guard -> FAILED. Developer additions under the same rule: PLAN_STALE on ENGINE_CHECK->IMAGE_PULL (plan document integrity) -> FAILED; image absent by digest before SMOKE_TEST (PLAN_STALE, N1) -> PROBING so that the re-plan lists the pull as an action."
+        }
+      ],
+      "guard_context": [
+        {"name": "plan_id", "description": {"ru": "plan_id, вычисленный заново (object_hash) в момент перехода: при WAITING_FOR_CONSENT → INSTALLING — из плана, заново построенного по текущему состоянию хоста (проверка устаревания); в остальных guards — из выполняемого документа плана (проверка целостности). Никогда не берётся из журнала.", "en": "plan_id recomputed (object_hash) at the moment of the transition: at WAITING_FOR_CONSENT -> INSTALLING from a plan rebuilt from the current host state (staleness check); in the other guards from the plan document being executed (integrity check). Never taken from the journal."}},
+        {"name": "consented_plan_id", "description": {"ru": "plan_id, на который пользователь дал согласие в WAITING_FOR_CONSENT (effect set_consented_plan_id); null, если согласия нет.", "en": "plan_id the user consented to in WAITING_FOR_CONSENT (effect set_consented_plan_id); null if there is no consent."}},
+        {"name": "plan_action_count", "description": {"ru": "Число действий в плане (см. semantics).", "en": "Number of actions in the plan (see semantics)."}},
+        {"name": "step", "description": {"ru": "Шаг, для которого запрашиваются права: {id, in_consented_plan, privileged}. in_consented_plan и privileged вычисляются клиентом поиском step.id в документе плана, object_hash которого равен consented_plan_id; они никогда не берутся у вызывающей стороны (UI, helper, аргументы).", "en": "The step that requests privileges: {id, in_consented_plan, privileged}. in_consented_plan and privileged are computed by looking up step.id in the plan document whose object_hash equals consented_plan_id; they are never supplied by the caller (UI, helper, arguments)."}},
+        {"name": "privilege_granted", "description": {"ru": "ОС предоставила права (UAC/sudo) именно для этого шага.", "en": "The OS granted privileges (UAC/sudo) for exactly this step."}},
+        {"name": "image_digest", "description": {"ru": "Digest образа (sha256:...), который будет загружен или запущен.", "en": "Digest (sha256:...) of the image to be pulled or run."}},
+        {"name": "image_present", "description": {"ru": "Образ с image_digest есть в локальном engine (проверка inspect по digest, без обращения к registry).", "en": "The image with image_digest exists in the local engine (inspect by digest, no registry access)."}},
+        {"name": "consented_image_digests", "description": {"ru": "Digest-ы образов, перечисленные в согласованном плане.", "en": "Image digests listed in the consented plan."}},
+        {"name": "allowlist", "description": {"ru": "Встроенный или подписанный allowlist digest-ов образов.", "en": "Built-in or signed allowlist of image digests."}}
+      ],
+      "guard_predicates": [
+        {"id": "consent_matches_plan", "reads": ["consented_plan_id", "plan_id"], "requires_consent": true,
+         "fails_with": ["CONSENT_REQUIRED", "PLAN_STALE"],
+         "description": {"ru": "Согласие есть (иначе CONSENT_REQUIRED), и заново вычисленный plan_id равен согласованному (иначе PLAN_STALE).", "en": "Consent exists (otherwise CONSENT_REQUIRED) and the recomputed plan_id equals the consented one (otherwise PLAN_STALE)."}},
+        {"id": "plan_has_no_actions", "reads": ["plan_action_count"], "requires_consent": false,
+         "fails_with": ["CONSENT_REQUIRED"],
+         "description": {"ru": "В плане нет действий: только проверки (иначе CONSENT_REQUIRED).", "en": "The plan has zero actions, only verification (otherwise CONSENT_REQUIRED)."}},
+        {"id": "step_is_privileged_plan_step", "reads": ["step"], "requires_consent": true,
+         "fails_with": ["CONSENT_REQUIRED"],
+         "description": {"ru": "Повышаемый шаг найден по step.id в документе плана с object_hash = consented_plan_id и помечен в нём флагом privilege (иначе CONSENT_REQUIRED).", "en": "The elevated step is found by step.id in the plan document whose object_hash equals consented_plan_id and carries the privilege flag there (otherwise CONSENT_REQUIRED)."}},
+        {"id": "privilege_granted", "reads": ["privilege_granted"], "requires_consent": false,
+         "fails_with": ["PRIVILEGE_REQUIRED"],
+         "description": {"ru": "Права для шага предоставлены (иначе PRIVILEGE_REQUIRED).", "en": "Privileges for the step were granted (otherwise PRIVILEGE_REQUIRED)."}},
+        {"id": "image_allowlisted", "reads": ["image_digest", "allowlist"], "requires_consent": false,
+         "fails_with": ["IMAGE_NOT_ALLOWED"],
+         "description": {"ru": "Digest образа есть в allowlist (иначе IMAGE_NOT_ALLOWED).", "en": "The image digest is in the allowlist (otherwise IMAGE_NOT_ALLOWED)."}},
+        {"id": "image_in_consented_plan", "reads": ["consented_plan_id", "image_digest", "consented_image_digests"], "requires_consent": true,
+         "fails_with": ["CONSENT_REQUIRED"],
+         "description": {"ru": "Согласие есть и digest образа перечислен в согласованном плане (иначе CONSENT_REQUIRED).", "en": "Consent exists and the image digest is listed in the consented plan (otherwise CONSENT_REQUIRED)."}},
+        {"id": "image_present_by_digest", "reads": ["image_present"], "requires_consent": false,
+         "fails_with": ["PLAN_STALE"],
+         "description": {"ru": "Образ уже есть в локальном engine по digest. Иначе PLAN_STALE: план исходил из наличия образа, а фактическое состояние другое; новый план включит загрузку как действие.", "en": "The image is already present in the local engine by digest. Otherwise PLAN_STALE: the plan assumed the image was present, the actual state differs; the new plan lists the pull as an action."}}
+      ],
+      "guards": [
+        {"from": "PLAN_READY", "to": "ENGINE_CHECK", "checks": ["plan_has_no_actions"],
+         "on_reject": {"CONSENT_REQUIRED": {"to": "WAITING_FOR_CONSENT", "event": "state"}}},
+        {"from": "WAITING_FOR_CONSENT", "to": "INSTALLING", "checks": ["consent_matches_plan"],
+         "on_reject": {"CONSENT_REQUIRED": {"stay": true, "event": "state"},
+                       "PLAN_STALE": {"to": "PROBING", "event": "state"}}},
+        {"from": "INSTALLING", "to": "WAITING_FOR_PRIVILEGE", "checks": ["consent_matches_plan", "step_is_privileged_plan_step"],
+         "on_reject": {"CONSENT_REQUIRED": {"to": "FAILED", "event": "error"},
+                       "PLAN_STALE": {"to": "FAILED", "event": "error"}}},
+        {"from": "WAITING_FOR_PRIVILEGE", "to": "INSTALLING", "checks": ["consent_matches_plan", "step_is_privileged_plan_step", "privilege_granted"],
+         "on_reject": {"CONSENT_REQUIRED": {"to": "FAILED", "event": "error"},
+                       "PLAN_STALE": {"to": "FAILED", "event": "error"},
+                       "PRIVILEGE_REQUIRED": {"stay": true, "event": "state"}}},
+        {"from": "ENGINE_CHECK", "to": "IMAGE_PULL", "checks": ["consent_matches_plan", "image_allowlisted", "image_in_consented_plan"],
+         "on_reject": {"CONSENT_REQUIRED": {"to": "PROBING", "event": "state"},
+                       "PLAN_STALE": {"to": "FAILED", "event": "error"},
+                       "IMAGE_NOT_ALLOWED": {"to": "FAILED", "event": "error"}}},
+        {"from": "ENGINE_CHECK", "to": "SMOKE_TEST", "checks": ["image_allowlisted", "image_present_by_digest"],
+         "on_reject": {"IMAGE_NOT_ALLOWED": {"to": "FAILED", "event": "error"},
+                       "PLAN_STALE": {"to": "PROBING", "event": "state"}}},
+        {"from": "IMAGE_PULL", "to": "SMOKE_TEST", "checks": ["image_allowlisted", "image_present_by_digest"],
+         "on_reject": {"IMAGE_NOT_ALLOWED": {"to": "FAILED", "event": "error"},
+                       "PLAN_STALE": {"to": "PROBING", "event": "state"}}}
+      ],
+      "effects": [
+        {"on": "user_consent", "state": "WAITING_FOR_CONSENT", "action": "set_consented_plan_id", "note": "consented_plan_id := object_hash recomputed from the exact plan displayed to the user (N3)"},
+        {"on": "enter_state", "state": "PROBING", "action": "clear_consent", "note": "any entry to PROBING invalidates consent (SEC-M2 c)"}
+      ],
+      "initial": "NEW",
+      "terminal": ["READY", "FAILED", "CANCELLED"],
+      "waiting": ["WAITING_FOR_CONSENT", "WAITING_FOR_PRIVILEGE", "REBOOT_REQUIRED", "ACTION_REQUIRED"],
+      "states": [
+        {"name": "NEW", "description": {"ru": "Профиль создан, проверка ещё не выполнялась.", "en": "Profile created, not probed yet."}},
+        {"name": "PROBING", "description": {"ru": "HostProbe проверяет фактическое состояние хоста.", "en": "HostProbe checks the actual host state."}},
+        {"name": "PLAN_READY", "description": {"ru": "InstallationPlan построен и показан; plan_id зафиксирован.", "en": "The InstallationPlan is built and shown; plan_id is fixed."}},
+        {"name": "WAITING_FOR_CONSENT", "description": {"ru": "Ожидается явное согласие пользователя с планом (и условиями лицензий).", "en": "Waiting for the user's explicit consent to the plan (and licence terms)."}},
+        {"name": "WAITING_FOR_PRIVILEGE", "description": {"ru": "Шагу плана нужны права администратора (UAC/sudo); ожидается их предоставление.", "en": "A plan step needs administrator rights (UAC/sudo); waiting for them."}},
+        {"name": "INSTALLING", "description": {"ru": "Выполняются согласованные шаги плана.", "en": "Approved plan steps are being executed."}},
+        {"name": "REBOOT_REQUIRED", "description": {"ru": "Нужна перезагрузка или повторный вход в сессию; клиент только предлагает её.", "en": "A reboot or a new login session is needed; the client only offers it."}},
+        {"name": "ENGINE_CHECK", "description": {"ru": "Проверка engine API, режима Linux-контейнеров и локального endpoint.", "en": "Checking the engine API, Linux-container mode and the local endpoint."}},
+        {"name": "IMAGE_PULL", "description": {"ru": "Загрузка разрешённого образа по immutable digest.", "en": "Pulling the allowed image by immutable digest."}},
+        {"name": "SMOKE_TEST", "description": {"ru": "Diagnostic-контейнер проверяет вычисления, persistent state, logs и stop.", "en": "The diagnostic container checks compute, persistent state, logs and stop."}},
+        {"name": "READY", "description": {"ru": "Engine, образ и diagnostic-контейнер проверены. Модель не требуется.", "en": "Engine, image and diagnostic container verified. No model is required."}},
+        {"name": "ACTION_REQUIRED", "description": {"ru": "Нужно действие человека; причина — в reason_code.", "en": "A human action is needed; the reason is in reason_code."}},
+        {"name": "FAILED", "description": {"ru": "Подготовка завершилась ошибкой; причина — в reason_code.", "en": "Setup failed; the reason is in reason_code."}},
+        {"name": "CANCELLED", "description": {"ru": "Подготовка отменена пользователем.", "en": "Setup was cancelled by the user."}}
+      ],
+      "transitions": [
+        {"from": "NEW", "to": "PROBING"},
+        {"from": "PROBING", "to": "PLAN_READY"},
+        {"from": "PROBING", "to": "ACTION_REQUIRED", "note": "e.g. VIRTUALIZATION_DISABLED, WSL_POLICY_BLOCKED"},
+        {"from": "PROBING", "to": "FAILED", "note": "e.g. UNSUPPORTED_PROFILE"},
+        {"from": "PROBING", "to": "CANCELLED"},
+        {"from": "PLAN_READY", "to": "WAITING_FOR_CONSENT", "note": "plan contains actions that need consent"},
+        {"from": "PLAN_READY", "to": "ENGINE_CHECK", "note": "plan has zero actions: engine ready and image present by digest (06A 5: unneeded steps are skipped after verification)"},
+        {"from": "PLAN_READY", "to": "PROBING", "note": "runtime configuration changed, plan stale, or process restart (journal is not trusted)"},
+        {"from": "PLAN_READY", "to": "CANCELLED"},
+        {"from": "WAITING_FOR_CONSENT", "to": "INSTALLING", "note": "consent bound to the recomputed plan_id; a plan whose only action is the image pull also passes INSTALLING (no install steps)"},
+        {"from": "WAITING_FOR_CONSENT", "to": "PROBING", "note": "PLAN_STALE, runtime configuration changed, or process restart; a new plan needs new consent"},
+        {"from": "WAITING_FOR_CONSENT", "to": "CANCELLED", "note": "consent declined"},
+        {"from": "INSTALLING", "to": "WAITING_FOR_PRIVILEGE"},
+        {"from": "INSTALLING", "to": "REBOOT_REQUIRED"},
+        {"from": "INSTALLING", "to": "ENGINE_CHECK"},
+        {"from": "INSTALLING", "to": "ACTION_REQUIRED"},
+        {"from": "INSTALLING", "to": "FAILED"},
+        {"from": "INSTALLING", "to": "CANCELLED"},
+        {"from": "INSTALLING", "to": "PROBING", "note": "process/computer restart: resume re-verifies (CF15)"},
+        {"from": "WAITING_FOR_PRIVILEGE", "to": "PROBING", "note": "process/computer restart: resume re-verifies (CF15)"},
+        {"from": "ENGINE_CHECK", "to": "PROBING", "note": "process/computer restart: resume re-verifies (CF15)"},
+        {"from": "IMAGE_PULL", "to": "PROBING", "note": "process/computer restart: resume re-verifies (CF15)"},
+        {"from": "SMOKE_TEST", "to": "PROBING", "note": "process/computer restart: resume re-verifies (CF15)"},
+        {"from": "WAITING_FOR_PRIVILEGE", "to": "INSTALLING", "note": "privilege granted for this step"},
+        {"from": "WAITING_FOR_PRIVILEGE", "to": "ACTION_REQUIRED", "note": "privilege cannot be obtained without a human"},
+        {"from": "WAITING_FOR_PRIVILEGE", "to": "CANCELLED", "note": "UAC/sudo declined (TC31, TC43)"},
+        {"from": "WAITING_FOR_PRIVILEGE", "to": "FAILED", "note": "plan integrity lost while waiting for privileges (guard on_reject, CR-17)"},
+        {"from": "REBOOT_REQUIRED", "to": "PROBING", "note": "after reboot/re-login: re-verify the host before continuing (CF15)"},
+        {"from": "REBOOT_REQUIRED", "to": "CANCELLED"},
+        {"from": "ENGINE_CHECK", "to": "IMAGE_PULL", "note": "only with consent to a plan that lists this digest"},
+        {"from": "ENGINE_CHECK", "to": "SMOKE_TEST", "note": "image already present and verified by digest"},
+        {"from": "ENGINE_CHECK", "to": "ACTION_REQUIRED"},
+        {"from": "ENGINE_CHECK", "to": "FAILED"},
+        {"from": "ENGINE_CHECK", "to": "CANCELLED"},
+        {"from": "IMAGE_PULL", "to": "SMOKE_TEST"},
+        {"from": "IMAGE_PULL", "to": "ACTION_REQUIRED"},
+        {"from": "IMAGE_PULL", "to": "FAILED"},
+        {"from": "IMAGE_PULL", "to": "CANCELLED"},
+        {"from": "SMOKE_TEST", "to": "READY"},
+        {"from": "SMOKE_TEST", "to": "ACTION_REQUIRED"},
+        {"from": "SMOKE_TEST", "to": "FAILED"},
+        {"from": "SMOKE_TEST", "to": "CANCELLED"},
+        {"from": "READY", "to": "PROBING", "note": "runtime configuration changed or re-check requested (CF17)"},
+        {"from": "ACTION_REQUIRED", "to": "PROBING", "note": "user reports the action done; resume re-verifies"},
+        {"from": "ACTION_REQUIRED", "to": "CANCELLED"},
+        {"from": "FAILED", "to": "PROBING", "note": "retry/resume re-verifies"},
+        {"from": "CANCELLED", "to": "PROBING", "note": "setup started again"}
+      ]
+    },
+    {
+      "id": "node_status",
+      "kind": "lifecycle",
+      "title": "Status of the client as a network node (execution_mode=node)",
+      "spec_refs": ["CF42", "CF43", "CF62", "CF67", "inference/01-REQUIREMENTS-AND-ARCHITECTURE"],
+      "semantics": {
+        "ru": "OFFLINE — исходное состояние и состояние покоя (terminal); подключение всегда явное. Плановое отключение и переключение режима идут через DRAINING. Прямой переход в OFFLINE из REGISTERED/READY/BUSY — только при потере lease или отзыве узла; при этом агент сам останавливает задачу (CF62, CF67). FAILED не является статусом узла: если переключение node→single не удалось (CF43), операция переключения режима завершается состоянием FAILED с кодом причины (например, DRAIN_TIMEOUT), а узел остаётся в DRAINING, пока освобождение ресурсов не подтверждено (решение пользователя от 2026-11-06).",
+        "en": "OFFLINE is the initial and resting (terminal) state; connecting is always explicit. Planned leave and mode switch go through DRAINING. A direct move to OFFLINE from REGISTERED/READY/BUSY happens only on lease loss or node revocation, and the agent stops the task itself (CF62, CF67). FAILED is not a node status: when a node-to-single switch fails (CF43), the mode-switch operation ends as FAILED with a reason code (e.g. DRAIN_TIMEOUT), and the node stays in DRAINING until the release of resources is confirmed (user decision of 2026-11-06)."
+      },
+      "decisions": [
+        {
+          "ref": "CR-14",
+          "date": "2026-11-06",
+          "decided_by": "user",
+          "text": "FAILED is not a node status. A failed node-to-single switch ends the mode-switch operation as FAILED with a reason code; the node stays DRAINING until release is confirmed (CF43)."
+        }
+      ],
+      "initial": "OFFLINE",
+      "terminal": ["OFFLINE"],
+      "states": [
+        {"name": "OFFLINE", "description": {"ru": "Узел не подключён к сети Sprut.", "en": "The node is not connected to the Sprut network."}},
+        {"name": "CONNECTING", "description": {"ru": "Устанавливается соединение с координатором и регистрация.", "en": "Connecting to the coordinator and registering."}},
+        {"name": "REGISTERED", "description": {"ru": "Узел зарегистрирован, preflight ещё не пройден; задачи не принимаются.", "en": "The node is registered, preflight not passed yet; no jobs are accepted."}},
+        {"name": "READY", "description": {"ru": "Узел готов принимать разрешённые задачи.", "en": "The node accepts allowed jobs."}},
+        {"name": "BUSY", "description": {"ru": "Узел выполняет задачу.", "en": "The node is running a job."}},
+        {"name": "DRAINING", "description": {"ru": "Приём задач прекращён; выполняется drain/checkpoint/cancel по политике.", "en": "No new jobs; drain/checkpoint/cancel per policy is in progress."}}
+      ],
+      "transitions": [
+        {"from": "OFFLINE", "to": "CONNECTING", "note": "explicit join/run"},
+        {"from": "CONNECTING", "to": "REGISTERED"},
+        {"from": "CONNECTING", "to": "OFFLINE", "note": "AUTH_REJECTED, VERSION_MISMATCH, COORDINATOR_UNREACHABLE or cancelled"},
+        {"from": "REGISTERED", "to": "READY", "note": "preflight passed"},
+        {"from": "REGISTERED", "to": "OFFLINE", "note": "leave before accepting jobs, lease lost or node revoked"},
+        {"from": "READY", "to": "BUSY", "note": "job accepted"},
+        {"from": "READY", "to": "DRAINING", "note": "leave, drain or mode switch"},
+        {"from": "READY", "to": "OFFLINE", "note": "lease lost or node revoked"},
+        {"from": "BUSY", "to": "READY", "note": "job finished"},
+        {"from": "BUSY", "to": "DRAINING", "note": "leave, drain or mode switch"},
+        {"from": "BUSY", "to": "OFFLINE", "note": "lease lost or node revoked; the agent stops the task first"},
+        {"from": "DRAINING", "to": "OFFLINE", "note": "resources released and confirmed"}
+      ]
+    },
+    {
+      "id": "wsl_availability",
+      "kind": "probe_result",
+      "title": "WSL2 availability on Windows (HostProbe result)",
+      "spec_refs": ["CW01", "CW02", "CW03", "SPRUT-CLIENT-SPECIFICATION 6.3", "TC42", "TC43", "TC44"],
+      "semantics": {
+        "ru": "Каждое состояние — возможный результат HostProbe; повторная проверка может дать любое состояние. transitions перечисляют только то, чего клиент добивается собственными шагами согласованного плана (с UAC и, возможно, перезагрузкой). terminal — состояния, из которых клиент сам выйти не может: WSL2 готов либо нужно действие человека или другая платформа.",
+        "en": "Every state is a possible HostProbe result; a new probe may yield any state. transitions list only what the client achieves with its own approved plan steps (with UAC and possibly a reboot). terminal: states the client cannot leave by itself: WSL2 is ready, or a human action or another platform is needed."
+      },
+      "initial": null,
+      "terminal": ["WSL2_READY", "VIRTUALIZATION_DISABLED", "UNSUPPORTED_PROFILE"],
+      "states": [
+        {"name": "WSL2_READY", "description": {"ru": "WSL2 установлен и может запускать дистрибутивы версии 2; используется без переустановки.", "en": "WSL2 is installed and can run version 2 distributions; it is used without reinstalling."}},
+        {"name": "WSL_OUTDATED", "description": {"ru": "Только WSL1 или устаревший компонент WSL.", "en": "Only WSL1 or an outdated WSL component."}, "reason_code": "WSL_OUTDATED"},
+        {"name": "WSL_MISSING", "description": {"ru": "WSL не установлен.", "en": "WSL is not installed."}, "reason_code": "WSL_MISSING"},
+        {"name": "VIRTUALIZATION_DISABLED", "description": {"ru": "Аппаратная виртуализация отключена.", "en": "Hardware virtualization is disabled."}, "reason_code": "VIRTUALIZATION_DISABLED"},
+        {"name": "UNSUPPORTED_PROFILE", "description": {"ru": "Сборка Windows или платформа не поддерживает WSL2.", "en": "The Windows build or platform does not support WSL2."}, "reason_code": "UNSUPPORTED_PROFILE"}
+      ],
+      "transitions": [
+        {"from": "WSL_MISSING", "to": "WSL2_READY", "note": "install WSL per plan (CW03)"},
+        {"from": "WSL_OUTDATED", "to": "WSL2_READY", "note": "separate update step per plan (CW03)"}
+      ]
+    },
+    {
+      "id": "task",
+      "kind": "lifecycle",
+      "title": "Generic long-running operation (model pull/import/load, image update, diagnostics export, training run, mode switch)",
+      "spec_refs": ["CF01", "CF43", "CF51", "CF70", "CF81", "CF90", "SPRUT-CLIENT-SPECIFICATION 7.1 item 3"],
+      "semantics": {
+        "ru": "Одна операция с одним operation_id: RUNNING до итога SUCCEEDED, FAILED (с reason_code) или CANCELLED. Ребра перезапуска нет: после аварии или перезапуска процесса операция не продолжается по журналу; возобновление (например, докачка модели) — это новая операция с новым operation_id, которая сама перепроверяет фактическое состояние. Прогресс сообщается событиями progress в состоянии RUNNING. Для mode_switch: если drain не удался (CF43), операция завершается FAILED с кодом причины, а node_status остаётся DRAINING.",
+        "en": "One operation with one operation_id: RUNNING until the outcome SUCCEEDED, FAILED (with a reason_code) or CANCELLED. There is no restart edge: after a crash or process restart the operation is not continued from a journal; resuming (e.g. a model download) is a new operation with a new operation_id that re-verifies the actual state itself. Progress is reported by progress events in RUNNING. For mode_switch: if the drain fails (CF43), the operation ends FAILED with a reason code while node_status stays DRAINING."
+      },
+      "decisions": [
+        {
+          "ref": "CR-18",
+          "date": "2026-11-06",
+          "decided_by": "orchestrator",
+          "text": "Long operations without their own machine use the generic task machine (RUNNING, SUCCEEDED, FAILED, CANCELLED) and are named by operation_kinds. No restart edge; a resumed task is a new operation_id."
+        }
+      ],
+      "initial": "RUNNING",
+      "terminal": ["SUCCEEDED", "FAILED", "CANCELLED"],
+      "states": [
+        {"name": "RUNNING", "description": {"ru": "Операция выполняется.", "en": "The operation is running."}},
+        {"name": "SUCCEEDED", "description": {"ru": "Операция успешно завершена.", "en": "The operation completed successfully."}},
+        {"name": "FAILED", "description": {"ru": "Операция завершилась ошибкой; причина — в reason_code.", "en": "The operation failed; the reason is in reason_code."}},
+        {"name": "CANCELLED", "description": {"ru": "Операция отменена пользователем.", "en": "The operation was cancelled by the user."}}
+      ],
+      "transitions": [
+        {"from": "RUNNING", "to": "SUCCEEDED"},
+        {"from": "RUNNING", "to": "FAILED"},
+        {"from": "RUNNING", "to": "CANCELLED"}
+      ]
+    }
+  ],
+  "operation_kinds": [
+    {"kind": "bootstrap", "machine": "bootstrap", "description": {"ru": "Подготовка окружения (sprut setup, экран «Подготовка»).", "en": "Environment preparation (sprut setup, Preparation screen)."}},
+    {"kind": "node_status", "machine": "node_status", "description": {"ru": "Статус узла сети (node join/run/drain/leave).", "en": "Network node status (node join/run/drain/leave)."}},
+    {"kind": "model_pull", "machine": "task", "description": {"ru": "Загрузка модели из каталога или Hugging Face.", "en": "Model download from the catalog or Hugging Face."}},
+    {"kind": "model_import", "machine": "task", "description": {"ru": "Импорт модели из файла или папки.", "en": "Model import from a file or folder."}},
+    {"kind": "model_load", "machine": "task", "description": {"ru": "Загрузка модели в память.", "en": "Loading a model into memory."}},
+    {"kind": "image_update", "machine": "task", "description": {"ru": "Обновление worker-образа по доверенному digest.", "en": "Worker image update to a trusted digest."}},
+    {"kind": "diag_export", "machine": "task", "description": {"ru": "Экспорт диагностического архива.", "en": "Diagnostics archive export."}},
+    {"kind": "train_run", "machine": "task", "description": {"ru": "Задача обучения (с S0).", "en": "Training run (from S0)."}},
+    {"kind": "mode_switch", "machine": "task", "description": {"ru": "Переключение режима single/node с drain.", "en": "Switching between single and node mode with drain."}}
+  ]
+}

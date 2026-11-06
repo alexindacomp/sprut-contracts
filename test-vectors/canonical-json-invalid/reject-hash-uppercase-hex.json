@@ -1,0 +1,7 @@
+{
+  "name": "reject-hash-uppercase-hex",
+  "description": "A stored top-level hash must match ^[0-9a-f]{64}$ (lowercase).",
+  "operation": "object_hash",
+  "input_text": "{\"kind\":\"example_record\",\"hash\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}",
+  "expected_error": "INVALID_HASH_MEMBER"
+}

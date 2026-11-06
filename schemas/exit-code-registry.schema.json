@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/exit-code-registry.schema.json",
+  "title": "Sprut CLI exit-code registry",
+  "description": "Format of registry/exit-codes.json (SPRUT-CLIENT-SPECIFICATION 7.3). The exit code of a command is chosen by `resolution.rules`, in order, first match wins: (1) usage error -> 2; (2) SIGINT -> 130; (3) event stream ended without a final or waiting state -> 1; (4) requested outcome reached (succeeded) -> 0; (5) final (machine of the operation, authoritative state): bootstrap/node_status READY -> 0, bootstrap ACTION_REQUIRED -> 3, bootstrap WAITING_FOR_CONSENT or WAITING_FOR_PRIVILEGE without interactive input -> 4, bootstrap REBOOT_REQUIRED -> 5, bootstrap CANCELLED -> 130, task SUCCEEDED -> 0, task CANCELLED -> 130 (task FAILED falls through to the reason code); (6) otherwise cli_exit_code of the reason code (6/7/8...), fallback 1. A reason code's cli_exit_code alone is therefore not the exit code.",
+  "type": "object",
+  "required": ["schema_version", "status", "resolution", "exit_codes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {
+      "description": "proposal: may change until fixed at S-1; fixed: changes only with a new major CLI version.",
+      "enum": ["proposal", "fixed"]
+    },
+    "spec_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "resolution": {
+      "type": "object",
+      "required": ["description", "succeeded_final_states", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {"$ref": "#/$defs/localized"},
+        "succeeded_final_states": {
+          "description": "Per machine id, the final states with which succeeded=true is consistent (read-only commands such as setup plan may succeed in WAITING_FOR_CONSENT). succeeded=true with any other final state, e.g. FAILED or CANCELLED, is invalid input.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"}
+          }
+        },
+        "rules": {
+          "description": "Ordered; the first rule whose every match condition holds wins. The last rule must be a catch-all (empty match).",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/rule"}
+        }
+      }
+    },
+    "exit_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/exit_code"}
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["id", "match", "exit_code", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+        "description": {"$ref": "#/$defs/localized"},
+        "match": {
+          "description": "All listed conditions must hold. Missing boolean inputs count as false.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "usage_error": {"type": "boolean"},
+            "interrupted": {"type": "boolean"},
+            "incomplete": {"type": "boolean"},
+            "succeeded": {"type": "boolean"},
+            "machine": {
+              "description": "Machine ids (registry/state-machines.json); the input operation kind is mapped to its machine via operation_kinds.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}
+            },
+            "interactive": {"type": "boolean"},
+            "has_reason_code": {"type": "boolean"},
+            "final_state": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"}
+            }
+          }
+        },
+        "exit_code": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0, "maximum": 255},
+            {"const": "from_reason_code"}
+          ]
+        }
+      }
+    },
+    "exit_code": {
+      "type": "object",
+      "required": ["code", "name", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {"type": "integer", "minimum": 0, "maximum": 255},
+        "name": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+        "description": {"$ref": "#/$defs/localized"},
+        "reason_codes": {
+          "description": "Reason codes that map to this exit code explicitly. Must match cli_exit_code in reason-codes.json in both directions.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"}
+        },
+        "reason_code_fallback": {
+          "description": "True for the single exit code used by every reason code without a specific mapping.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

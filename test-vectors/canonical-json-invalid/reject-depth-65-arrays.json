@@ -1,0 +1,7 @@
+{
+  "name": "reject-depth-65-arrays",
+  "description": "Nesting deeper than 64 is rejected before parsing.",
+  "operation": "canonicalize",
+  "input_text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "expected_error": "DEPTH_LIMIT"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "reject-unexpected-kind",
+  "description": "N6: the verifier expects an installation_plan here; a well-formed model_manifest is rejected (no cross-type substitution).",
+  "operation": "object_hash",
+  "expected_kind": "installation_plan",
+  "input_text": "{\"kind\":\"model_manifest\",\"schema_version\":1,\"steps\":[]}",
+  "expected_error": "INVALID_KIND"
+}
