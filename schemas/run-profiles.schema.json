@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/run-profiles.schema.json",
+  "title": "Container run profiles",
+  "description": "Format of registry/run-profiles.json (docs/images-and-ownership.md section 5, SEC-15). A run profile fixes how a container of one image purpose (the `purpose` of registry/image-allowlist.json) is started. status=normative: `docker_run_options` are option groups that every run of the profile contains exactly once, token for token (with the Engine API: the equivalent HostConfig fields listed in the docs); `other_options` are the only other option groups a run may carry; `removal` says when the container is removed. The option set is closed: any other option makes the run non-conforming, and nothing follows the image reference (no command, no arguments). status=to_be_defined: the profile is not defined yet; it needs its own security review, no container of that purpose is run and no image of that purpose is allowlisted until it is defined. A placeholder `{name}` is a whole token and stands for a value matching the pattern of the parameter `name`.",
+  "type": "object",
+  "required": ["schema_version", "parameters", "profiles"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "parameters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "pattern", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "pattern": {"description": "Anchored pattern of the value.", "type": "string", "minLength": 3},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile"}
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["id", "status", "description", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"description": "Equals the image purpose it applies to.", "enum": ["diagnostic", "worker", "inference"]},
+        "status": {"enum": ["normative", "to_be_defined"]},
+        "docker_run_options": {
+          "description": "Option groups of `docker run`, each a fixed token sequence. Every run of the profile contains every group exactly once as consecutive tokens, before the image reference.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9{}_=.:/-]+$"}}
+        },
+        "other_options": {
+          "description": "The only other option groups a run of the profile may carry, each any number of times (name, ownership labels, detached start).",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9{}_=.:/-]+$"}}
+        },
+        "limits": {
+          "description": "Fixed values of the parameters used by docker_run_options. Absent while the values are not fixed; then the client uses provisional constants and no image of this purpose may be allowlisted.",
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
+        },
+        "removal": {
+          "description": "always: the container is removed after every run, also after a failure, a timeout and a cancellation, and when a crashed run left it behind.",
+          "enum": ["always"]
+        },
+        "description": {"$ref": "#/$defs/localized"},
+        "note": {"type": "string", "minLength": 1}
+      },
+      "if": {"properties": {"status": {"const": "normative"}}, "required": ["status"]},
+      "then": {"required": ["docker_run_options", "other_options", "removal"]},
+      "else": {"not": {"anyOf": [{"required": ["docker_run_options"]}, {"required": ["other_options"]}, {"required": ["limits"]}, {"required": ["removal"]}]}}
+    }
+  }
+}

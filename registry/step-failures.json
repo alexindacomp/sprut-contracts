@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "failure_classes": [
+    {"id": "source_unavailable", "reason_code": "SOURCE_UNAVAILABLE", "to": "FAILED", "event": "error",
+     "description": {"ru": "Официальный источник не отдал данные. (1) Действие download_source не удалось по вине источника или сети: ошибка сети, статус HTTP, ошибка TLS или сертификата, перенаправление, отклонённое правилом 10, превышение размера или времени загрузки. (2) `/usr/bin/apt-get update` выполнился и завершился с кодом 1–255 (с APT::Update::Error-Mode=any: индекс репозитория не получен или не прошёл проверку). (3) pull шага image_pull: через docker CLI — команда выполнилась и завершилась с кодом 1–255; через Engine API — запрос принят, а поток прогресса сообщил об ошибке. Для шага с правами на Windows об этом сообщает elevated helper.", "en": "The official source did not deliver. (1) The download_source action failed because of the source or the network: network error, HTTP status, TLS or certificate error, a redirect refused by rule 10, the size limit or the download timeout. (2) `/usr/bin/apt-get update` ran and exited with a status in 1-255 (with APT::Update::Error-Mode=any: a repository index could not be fetched or verified). (3) The pull of an image_pull step: with the docker CLI the command ran and exited with a status in 1-255; with the Engine API the request was accepted and its progress stream reported an error. For a step privileged on Windows the elevated helper reports it."}},
+    {"id": "insufficient_disk", "reason_code": "INSUFFICIENT_DISK", "to": "ACTION_REQUIRED", "event": "error",
+     "description": {"ru": "Клиент записывал собственный файл шага (загрузку в каталоге загрузок, копию rootfs, проверенную копию), и система сообщила, что на диске закончилось место (Windows: ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL; Linux: ENOSPC, EDQUOT).", "en": "The client was writing its own file of the step (the staged download, the rootfs copy, a verified copy) and the system reported that the disk is full (Windows: ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL; Linux: ENOSPC, EDQUOT)."}},
+    {"id": "local_storage_failed", "reason_code": "LOCAL_STORAGE_FAILED", "to": "ACTION_REQUIRED", "event": "error",
+     "description": {"ru": "Клиент не смог создать, записать, сбросить на диск, переименовать или прочитать обратно собственный файл шага (загрузку в каталоге загрузок, копию rootfs, проверенную копию) по любой другой причине: отказано в доступе, ошибка ввода-вывода.", "en": "The client could not create, write, flush, rename or read back its own file of the step (the staged download, the rootfs copy, a verified copy) for any other reason: access denied, an I/O error."}},
+    {"id": "package_install_failed", "reason_code": "PACKAGE_INSTALL_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "`/usr/bin/apt-get install` выполнился и завершился с кодом 1–255: пакеты не удалось загрузить или установить.", "en": "`/usr/bin/apt-get install` ran and exited with a status in 1-255: packages could not be downloaded or installed."}},
+    {"id": "wsl_command_failed", "reason_code": "WSL_COMMAND_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "Windows: процесс, запущенный через wsl.exe (сам wsl.exe или программа внутри дистрибутива Sprut) и не являющийся командой Docker Engine, не запустился, не завершился за отведённое время или завершился с кодом возврата вне 0–255 (ошибка самого wsl.exe, например -1). В PROBING, ENGINE_CHECK и SMOKE_TEST также: проверка, ответом которой служит её вывод, завершилась с кодом 1–255 либо с кодом 0 и неполным или неправильно оформленным выводом. Это никогда не свидетельство повреждения дистрибутива (WSL_DISTRO_BROKEN) и не основание планировать его удаление.", "en": "Windows: a process started through wsl.exe (wsl.exe itself or a program inside the Sprut distribution) that is not a Docker Engine command could not be started, did not finish within its timeout, or ended with an exit status outside 0-255 (an error of wsl.exe itself, for example -1). In PROBING, ENGINE_CHECK and SMOKE_TEST also: a probe whose answer is its output ended with a status in 1-255, or with status 0 and output that is incomplete or not well-formed. It is never evidence that the distribution is broken (WSL_DISTRO_BROKEN) and never a reason to plan its removal."}},
+    {"id": "command_failed", "reason_code": "STEP_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "Любой другой сбой команды шага плана: программа или install_file выполнились и завершились с кодом 1–255; действие клиента не удалось (например, ошибка ввода-вывода при записи .wslconfig); на Linux программа (за sudo, после отдельной проверки учётных данных) не запустилась или не завершилась за отведённое время.", "en": "Any other failure of a command of a plan step: a program or install_file ran and exited with a status in 1-255; a client action failed (for example an I/O error while writing .wslconfig); on Linux the program (behind sudo, after the separate credential check) could not be started or did not finish within its timeout."}},
+    {"id": "plan_refused", "reason_code": "PLAN_INVALID", "to": "FAILED", "event": "error",
+     "description": {"ru": "Windows: elevated helper отклонил документ плана, который он прочитал (раздел 9: недопустимый путь к файлу плана, несовпадение plan id и хеша, план не проходит проверку, неизвестный шаг, kind без повышения прав, source отличается от констант helper). Ничего не выполнялось.", "en": "Windows: the elevated helper refused the plan document it read (section 9: a plan path that is not allowed, plan id and hash differ, the plan fails validation, an unknown step, a kind that is not elevated, a source that differs from the helper's constants). Nothing was run."}},
+    {"id": "elevation_unavailable", "reason_code": "ELEVATION_UNAVAILABLE", "to": "ACTION_REQUIRED", "event": "error",
+     "description": {"ru": "Windows: elevated helper отсутствует в установке или его не удалось запустить. Отказ пользователя в запросе UAC или в собственном запросе helper — не класс сбоя: операция переходит в CANCELLED.", "en": "Windows: the elevated helper is missing from the installation or could not be started. A UAC prompt or the helper's own prompt declined by the user is not a failure class: the operation goes to CANCELLED."}},
+    {"id": "elevated_step_failed", "reason_code": "ELEVATED_STEP_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "Windows: elevated helper запустился, но шаг не выполнен по любой причине, кроме source_unavailable, plan_refused и невыполненного precondition (INTEGRITY_MISMATCH): программа завершилась с ненулевым кодом, не запустилась или не уложилась в таймаут либо helper завершился без результата.", "en": "Windows: the elevated helper ran and the step did not complete, for any reason other than source_unavailable, plan_refused and a failed precondition (INTEGRITY_MISMATCH): a program exited with a non-zero status, could not be started or timed out, or the helper ended without a result."}},
+    {"id": "smoke_test_failed", "reason_code": "SMOKE_TEST_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "Diagnostic-контейнер был запущен и (а) завершился с ненулевым кодом либо (б) ожидание его завершения достигло времени, отведённого на smoke test, и последующий inspect показал, что контейнер всё ещё выполняется (после этого он останавливается и удаляется).", "en": "The diagnostic container was started and (a) exited with a non-zero status, or (b) the wait for it reached the smoke-test timeout and the inspect that follows showed the container still running (it is then stopped and removed)."}},
+    {"id": "engine_docker_desktop", "reason_code": "ENGINE_DOCKER_DESKTOP", "to": "ACTION_REQUIRED", "event": "error",
+     "description": {"ru": "Сведения об engine прочитаны, и он сообщает о себе как Docker Desktop: OperatingSystem в ответе info равен `Docker Desktop` либо Platform.Name в ответе version начинается с `Docker Desktop` (CW06). Если Docker CLI установлен, сведения читаются до того, как используется ответ systemctl is-active, и ответ Docker Desktop действует при любом состоянии docker.service. Проверяется вместе с локальным endpoint и повторяется перед каждым запуском контейнера или задачи.", "en": "The engine's identity was read and it identifies itself as Docker Desktop: OperatingSystem of the info answer equals `Docker Desktop`, or Platform.Name of the version answer starts with `Docker Desktop` (CW06). Whenever the Docker CLI is present the identity is read before the answer of systemctl is-active is used, and a Docker Desktop answer wins whatever the state of docker.service is. Checked together with the local endpoint and repeated before every container or task run."}},
+    {"id": "engine_command_failed", "reason_code": "ENGINE_COMMAND_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "Команда Docker Engine (запрос к Engine API или вызов docker CLI: запросы version и info, inspect образа, pull, create, start, wait, logs, inspect, stop и remove контейнера), кроме случаев source_unavailable и smoke_test_failed: процесс не запустился, не завершился за отведённое время, завершился с кодом возврата вне 0–255 (Windows, через wsl.exe) или с кодом 1–255; запрос к Engine API вернул ошибку (для pull — до начала потока прогресса); после таймаута ожидания diagnostic-контейнера inspect не дал ответа. Более точные коды (ENGINE_CLI_MISSING, ENGINE_DAEMON_STOPPED, ENGINE_PERMISSION_DENIED, ENGINE_WRONG_MODE) используются только при положительном свидетельстве.", "en": "A Docker Engine command (an Engine API request or a docker CLI call: version and info queries, image inspect, pull, container create, start, wait, logs, inspect, stop and remove), other than the cases of source_unavailable and smoke_test_failed: the process could not be started, did not finish within its timeout, ended with an exit status outside 0-255 (Windows, through wsl.exe) or with a status in 1-255; an Engine API request returned an error (for a pull: before the progress stream started); after the wait for the diagnostic container timed out, the inspect gave no answer. The more specific codes (ENGINE_CLI_MISSING, ENGINE_DAEMON_STOPPED, ENGINE_PERMISSION_DENIED, ENGINE_WRONG_MODE) are used only on positive evidence."}},
+    {"id": "probe_failed", "reason_code": "PROBE_FAILED", "to": "FAILED", "event": "error",
+     "description": {"ru": "Любая другая проверка состояния, которую не удалось выполнить. Чтение через API хоста, не запускающее процесс (Windows: реестр, сведения о системе; обе платформы: файлы), завершилось ошибкой. На Linux программа проверки (чтение os-release, systemctl, проверка слушающих сокетов) не запустилась, не завершилась за отведённое время либо — если её ответом служит вывод — завершилась с ненулевым кодом или вернула неполный вывод. Это не свидетельство о состоянии хоста; план по такой проверке не строится.", "en": "Any other check of the host state that could not be performed. A read through the host API that starts no process (Windows: the registry, system information; both platforms: files) failed. On Linux a probe program (reading os-release, systemctl, the check of listening sockets) could not be started, did not finish within its timeout or, when its answer is its output, exited with a non-zero status or returned incomplete output. It is not evidence about the host; no plan is built from such a check."}}
+  ],
+  "step_kinds": {
+    "enable_wsl_features": {"windows": ["plan_refused", "elevation_unavailable", "elevated_step_failed"]},
+    "enable_vm_platform": {"windows": ["plan_refused", "elevation_unavailable", "elevated_step_failed"]},
+    "install_wsl": {"windows": ["source_unavailable", "plan_refused", "elevation_unavailable", "elevated_step_failed"]},
+    "update_wsl": {"windows": ["source_unavailable", "plan_refused", "elevation_unavailable", "elevated_step_failed"]},
+    "unregister_distro": {"windows": ["wsl_command_failed", "command_failed"]},
+    "import_distro": {"windows": ["source_unavailable", "insufficient_disk", "local_storage_failed", "wsl_command_failed", "command_failed"]},
+    "configure_distro": {"windows": ["wsl_command_failed", "command_failed"]},
+    "apt_add_docker_repo": {
+      "windows": ["source_unavailable", "insufficient_disk", "local_storage_failed", "wsl_command_failed", "command_failed"],
+      "linux": ["source_unavailable", "insufficient_disk", "local_storage_failed", "command_failed"]
+    },
+    "install_docker_engine": {
+      "windows": ["package_install_failed", "wsl_command_failed", "command_failed"],
+      "linux": ["package_install_failed", "command_failed"]
+    },
+    "add_user_to_docker_group": {"linux": ["command_failed"]},
+    "install_nvidia_toolkit": {
+      "windows": ["source_unavailable", "insufficient_disk", "local_storage_failed", "package_install_failed", "wsl_command_failed", "command_failed"],
+      "linux": ["source_unavailable", "insufficient_disk", "local_storage_failed", "package_install_failed", "command_failed"]
+    },
+    "start_engine": {
+      "windows": ["wsl_command_failed", "command_failed"],
+      "linux": ["command_failed"]
+    },
+    "write_wslconfig": {"windows": ["command_failed"]},
+    "resize_distro_disk": {"windows": ["wsl_command_failed", "command_failed"]},
+    "restart_wsl": {"windows": ["wsl_command_failed", "command_failed"]},
+    "image_pull": {
+      "windows": ["source_unavailable", "engine_command_failed"],
+      "linux": ["source_unavailable", "engine_command_failed"]
+    }
+  },
+  "states": {
+    "PROBING": {
+      "windows": ["wsl_command_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"],
+      "linux": ["engine_docker_desktop", "engine_command_failed", "probe_failed"]
+    },
+    "ENGINE_CHECK": {
+      "windows": ["wsl_command_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"],
+      "linux": ["engine_docker_desktop", "engine_command_failed", "probe_failed"]
+    },
+    "SMOKE_TEST": {
+      "windows": ["wsl_command_failed", "smoke_test_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"],
+      "linux": ["smoke_test_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"]
+    }
+  }
+}

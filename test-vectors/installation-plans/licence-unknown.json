@@ -48,8 +48,8 @@
         "id": "install-wsl",
         "kind": "install_wsl",
         "title": {
-          "ru": "Установить WSL из официального источника",
-          "en": "Install WSL from the official source"
+          "ru": "Установить WSL из официального источника (запущенные дистрибутивы WSL могут быть остановлены)",
+          "en": "Install WSL from the official source (running WSL distributions may be stopped)"
         },
         "privileged": true,
         "requires_reboot": false,
@@ -86,8 +86,8 @@
         "id": "configure-distro",
         "kind": "configure_distro",
         "title": {
-          "ru": "Включить systemd в дистрибутиве Sprut",
-          "en": "Enable systemd in the Sprut distribution"
+          "ru": "Включить systemd в дистрибутиве Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+          "en": "Enable systemd in the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
         },
         "privileged": false,
         "requires_reboot": false,
@@ -198,7 +198,7 @@
       }
     ],
     "disk_estimate_bytes": 5200004096,
-    "hash": "5ce7f584ac8aadc85abf478aeba1b4671783e26da5e0d09f81d9e9f7c5ebe17b"
+    "hash": "93b34e46a06137a9125b3b1fccb3da18b9508d6ff684b24d006041be89d70890"
   },
   "expected": "invalid",
   "expected_error": "LICENCE_UNKNOWN"

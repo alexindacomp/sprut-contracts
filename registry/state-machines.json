@@ -28,6 +28,12 @@
           "date": "2026-11-06",
           "decided_by": "orchestrator",
           "text": "Orchestrator decision 2026-11-06, conservative; FAILED for policy/integrity violations. On a rejected guard: PLAN_READY->ENGINE_CHECK CONSENT_REQUIRED -> WAITING_FOR_CONSENT; WAITING_FOR_CONSENT->INSTALLING CONSENT_REQUIRED -> stay, PLAN_STALE -> PROBING; WAITING_FOR_PRIVILEGE->INSTALLING PRIVILEGE_REQUIRED -> stay (an explicit decline uses ->CANCELLED); ENGINE_CHECK->IMAGE_PULL CONSENT_REQUIRED -> PROBING; CONSENT_REQUIRED or PLAN_STALE on INSTALLING<->WAITING_FOR_PRIVILEGE -> FAILED; IMAGE_NOT_ALLOWED on any guard -> FAILED. Developer additions under the same rule: PLAN_STALE on ENGINE_CHECK->IMAGE_PULL (plan document integrity) -> FAILED; image absent by digest before SMOKE_TEST (PLAN_STALE, N1) -> PROBING so that the re-plan lists the pull as an action."
+        },
+        {
+          "ref": "CR-45",
+          "date": "2026-11-10",
+          "decided_by": "orchestrator",
+          "text": "A failure while a plan step or a bootstrap check is executed maps to a reason code and a next state through registry/step-failures.json (docs/installation-plan.md section 8), never through a code that describes another condition: a failed command is STEP_FAILED, PACKAGE_INSTALL_FAILED or SOURCE_UNAVAILABLE -> FAILED; wsl.exe or an in-distribution command that could not run or timed out is WSL_COMMAND_FAILED -> FAILED and is never WSL_DISTRO_BROKEN; an engine command that could not run, timed out or failed without positive evidence is ENGINE_COMMAND_FAILED -> FAILED and is never ENGINE_DAEMON_STOPPED or SMOKE_TEST_FAILED; an elevated step that ran and failed is ELEVATED_STEP_FAILED -> FAILED and is never PRIVILEGE_REQUIRED, WSL_MISSING or WSL_OUTDATED; a helper that is missing or cannot start is ELEVATION_UNAVAILABLE -> ACTION_REQUIRED; a plan document refused by the helper is PLAN_INVALID -> FAILED; a declined UAC prompt or helper prompt is CANCELLED; any other check that could not be performed is PROBE_FAILED -> FAILED; a client file that could not be written is LOCAL_STORAGE_FAILED -> ACTION_REQUIRED (a full disk INSUFFICIENT_DISK -> ACTION_REQUIRED); an engine that identifies itself as Docker Desktop is ENGINE_DOCKER_DESKTOP -> ACTION_REQUIRED and is never ENGINE_REMOTE_CONTEXT. WSL_DISTRO_BROKEN needs positive evidence (registered version other than 2, missing VHDX, or a probe that exited 0 with complete well-formed output that is not the expected answer); only it leads to a plan with unregister_distro."
         }
       ],
       "guard_context": [
@@ -45,7 +51,7 @@
         {"name": "required_licence_ids", "description": {"ru": "id всех licences[] показанного плана.", "en": "ids of all licences[] of the displayed plan."}},
         {"name": "accepted_licence_ids", "description": {"ru": "id лицензий, которые пользователь явно принял (GUI: отдельный флажок на каждую, по умолчанию снят; CLI: --accept-license <id>).", "en": "ids of the licences the user explicitly accepted (GUI: one control per licence, unchecked by default; CLI: --accept-license <id>)."}},
         {"name": "required_acknowledgements", "description": {"ru": "Подтверждения, которых требуют шаги показанного плана (acknowledgement в registry/plan-step-kinds.json).", "en": "Acknowledgements required by the steps of the displayed plan (acknowledgement in registry/plan-step-kinds.json)."}},
-        {"name": "given_acknowledgements", "description": {"ru": "Подтверждения, которые пользователь дал явно (GUI: отдельный флажок, по умолчанию снят; CLI: --accept-docker-group, --accept-distro-removal). --yes их не заменяет.", "en": "Acknowledgements the user gave explicitly (GUI: a separate control, unchecked by default; CLI: --accept-docker-group, --accept-distro-removal). --yes never replaces them."}}
+        {"name": "given_acknowledgements", "description": {"ru": "Подтверждения, которые пользователь дал явно (GUI: отдельный флажок, по умолчанию снят; CLI: --accept-docker-group, --accept-distro-removal, --accept-engine-restart). --yes их не заменяет.", "en": "Acknowledgements the user gave explicitly (GUI: a separate control, unchecked by default; CLI: --accept-docker-group, --accept-distro-removal, --accept-engine-restart). --yes never replaces them."}}
       ],
       "guard_predicates": [
         {"id": "consent_matches_plan", "reads": ["consented_plan_id", "plan_id"], "requires_consent": true,
@@ -225,18 +231,27 @@
       "id": "wsl_availability",
       "kind": "probe_result",
       "title": "WSL2 availability on Windows (HostProbe result)",
-      "spec_refs": ["CW01", "CW02", "CW03", "SPRUT-CLIENT-SPECIFICATION 6.3", "TC42", "TC43", "TC44"],
+      "spec_refs": ["CW01", "CW02", "CW03", "SPRUT-CLIENT-SPECIFICATION 6.3", "SPRUT-CLIENT-SPECIFICATION 8.3", "TC42", "TC43", "TC44"],
       "semantics": {
-        "ru": "Каждое состояние — возможный результат HostProbe; повторная проверка может дать любое состояние. transitions перечисляют только то, чего клиент добивается собственными шагами согласованного плана (с UAC и, возможно, перезагрузкой). terminal — состояния, из которых клиент сам выйти не может: WSL2 готов либо нужно действие человека или другая платформа.",
-        "en": "Every state is a possible HostProbe result; a new probe may yield any state. transitions list only what the client achieves with its own approved plan steps (with UAC and possibly a reboot). terminal: states the client cannot leave by itself: WSL2 is ready, or a human action or another platform is needed."
+        "ru": "Каждое состояние — возможный результат HostProbe; повторная проверка может дать любое состояние. transitions перечисляют только то, чего клиент добивается собственными шагами согласованного плана (с UAC и, возможно, перезагрузкой). terminal — состояния, из которых клиент сам выйти не может: WSL2 готов либо нужно действие человека (отключённая виртуализация, запрет политикой организации) или другая платформа. Каждое состояние, кроме WSL2_READY, несёт одноимённый reason_code. Проверка, которая не смогла выполниться (wsl.exe не запустился или не уложился в таймаут), не даёт состояния этой машины: это WSL_COMMAND_FAILED.",
+        "en": "Every state is a possible HostProbe result; a new probe may yield any state. transitions list only what the client achieves with its own approved plan steps (with UAC and possibly a reboot). terminal: states the client cannot leave by itself: WSL2 is ready, or a human action (virtualization disabled, blocked by an organization policy) or another platform is needed. Every state except WSL2_READY carries the reason code of the same name. A probe that could not run (wsl.exe did not start or timed out) yields no state of this machine: it is WSL_COMMAND_FAILED."
       },
+      "decisions": [
+        {
+          "ref": "CR-45",
+          "date": "2026-11-10",
+          "decided_by": "orchestrator",
+          "text": "WSL_POLICY_BLOCKED is a probe result of its own: terminal, the client cannot fix it and never plans a step for it; bootstrap goes PROBING -> ACTION_REQUIRED with the reason code WSL_POLICY_BLOCKED (spec 6.3: a corporate policy that forbids WSL gives ACTION_REQUIRED)."
+        }
+      ],
       "initial": null,
-      "terminal": ["WSL2_READY", "VIRTUALIZATION_DISABLED", "UNSUPPORTED_PROFILE"],
+      "terminal": ["WSL2_READY", "VIRTUALIZATION_DISABLED", "WSL_POLICY_BLOCKED", "UNSUPPORTED_PROFILE"],
       "states": [
         {"name": "WSL2_READY", "description": {"ru": "WSL2 установлен и может запускать дистрибутивы версии 2; используется без переустановки.", "en": "WSL2 is installed and can run version 2 distributions; it is used without reinstalling."}},
         {"name": "WSL_OUTDATED", "description": {"ru": "Только WSL1 или устаревший компонент WSL.", "en": "Only WSL1 or an outdated WSL component."}, "reason_code": "WSL_OUTDATED"},
         {"name": "WSL_MISSING", "description": {"ru": "WSL не установлен.", "en": "WSL is not installed."}, "reason_code": "WSL_MISSING"},
         {"name": "VIRTUALIZATION_DISABLED", "description": {"ru": "Аппаратная виртуализация отключена.", "en": "Hardware virtualization is disabled."}, "reason_code": "VIRTUALIZATION_DISABLED"},
+        {"name": "WSL_POLICY_BLOCKED", "description": {"ru": "WSL запрещён политикой организации; клиент не может это исправить и ничего для этого не планирует.", "en": "WSL is blocked by an organization policy; the client cannot fix it and plans nothing for it."}, "reason_code": "WSL_POLICY_BLOCKED"},
         {"name": "UNSUPPORTED_PROFILE", "description": {"ru": "Сборка Windows или платформа не поддерживает WSL2.", "en": "The Windows build or platform does not support WSL2."}, "reason_code": "UNSUPPORTED_PROFILE"}
       ],
       "transitions": [

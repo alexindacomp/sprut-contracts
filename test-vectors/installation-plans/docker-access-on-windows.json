@@ -47,8 +47,8 @@
         "id": "resize-distro-disk",
         "kind": "resize_distro_disk",
         "title": {
-          "ru": "Изменить максимальный размер диска дистрибутива Sprut",
-          "en": "Change the maximum disk size of the Sprut distribution"
+          "ru": "Изменить максимальный размер диска дистрибутива Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+          "en": "Change the maximum disk size of the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
         },
         "privileged": false,
         "requires_reboot": false,
@@ -77,7 +77,7 @@
     "licences": [],
     "docker_access": "docker_group",
     "disk_estimate_bytes": 0,
-    "hash": "b14cf7eadd552d872f51a1c37df2209ae9927bd7c4635c2fd9e4bb871baf2922"
+    "hash": "9f6813d9ecaa6f4fa011bdeb180a016fd223146138d7bcd63b5a973979276dbc"
   },
   "expected": "invalid",
   "expected_error": "DOCKER_ACCESS_MISMATCH"

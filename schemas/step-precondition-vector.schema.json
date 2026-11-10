@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/step-precondition-vector.schema.json",
   "title": "Step execution precondition test vectors",
-  "description": "Format of test-vectors/step-preconditions/cases.json (registry/plan-step-kinds.json preconditions, docs/installation-plan.md). Each case gives a step of the consented plan and the facts observed right before it runs. The preconditions of the step's kind are evaluated in registry order; expected=allowed: all hold; expected=rejected: the first failing one gives reason_code, the step is not run and the bootstrap operation moves from INSTALLING to expected_next_state with an event of type expected_event. Missing facts fail (fail closed).",
+  "description": "Format of test-vectors/step-preconditions/cases.json (registry/plan-step-kinds.json preconditions, docs/installation-plan.md). Each case gives a step of the consented plan, where a precondition needs it the step that follows it in that plan (next_step), and the facts observed right before it runs. The preconditions of the step's kind are evaluated in registry order; expected=allowed: all hold; expected=rejected: the first failing one gives reason_code, the step is not run and the bootstrap operation moves from INSTALLING to expected_next_state with an event of type expected_event. Missing facts fail (fail closed).",
   "type": "object",
   "required": ["description", "cases"],
   "additionalProperties": false,
@@ -20,6 +20,10 @@
           "note": {"type": "string", "minLength": 1},
           "platform": {"enum": ["windows", "linux"]},
           "step": {"type": "object"},
+          "next_step": {
+            "description": "The step that immediately follows `step` in the consented plan, when a precondition reads it (replacement_source_verified: the paired import_distro).",
+            "type": "object"
+          },
           "observed": {"type": "object"},
           "expected": {"enum": ["allowed", "rejected"]},
           "reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},

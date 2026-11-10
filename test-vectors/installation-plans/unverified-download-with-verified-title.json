@@ -22,8 +22,8 @@
         "id": "update-wsl",
         "kind": "update_wsl",
         "title": {
-          "ru": "Обновить WSL",
-          "en": "Update WSL"
+          "ru": "Обновить WSL (запущенные дистрибутивы WSL могут быть остановлены)",
+          "en": "Update WSL (running WSL distributions may be stopped)"
         },
         "privileged": true,
         "requires_reboot": true,
@@ -35,7 +35,7 @@
     "images": [],
     "licences": [],
     "disk_estimate_bytes": 0,
-    "hash": "f02cc65c71af8c200610905a596b5cce9d895a60404839bbcd1d849bafcf7cc0"
+    "hash": "bd6b00f3b97659263768c1388471fecd5e3e7ec7d93bc886ca82c1c623c11dca"
   },
   "expected": "invalid",
   "expected_error": "TITLE_MISMATCH"

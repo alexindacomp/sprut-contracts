@@ -1,0 +1,61 @@
+{
+  "name": "windows-wsl-update-verified",
+  "description": "WSL_OUTDATED updated from the client's pinned package: the step carries source, so its title is the kind's title, which discloses that running WSL distributions may be stopped (CR-80).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL_OUTDATED",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "absent",
+      "docker_engine": "absent",
+      "worker_image": "absent"
+    },
+    "steps": [
+      {
+        "id": "update-wsl",
+        "kind": "update_wsl",
+        "title": {
+          "ru": "Обновить WSL (запущенные дистрибутивы WSL могут быть остановлены)",
+          "en": "Update WSL (running WSL distributions may be stopped)"
+        },
+        "privileged": true,
+        "requires_reboot": true,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 0,
+        "source": {
+          "url": "https://github.com/microsoft/WSL/releases/download/2.3.26/wsl.2.3.26.0.x64.msi",
+          "sha256": "42f08742fa0dbd8e46470fc9f87bef841015fb2b520838b1c35c86921d4da09b"
+        }
+      }
+    ],
+    "images": [],
+    "licences": [],
+    "disk_estimate_bytes": 0,
+    "hash": "deed0a29ba912e2d45c2dd81aeb7e96a642c0d3dfd2ba5484f0b89ef1cb8d085"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "deed0a29ba912e2d45c2dd81aeb7e96a642c0d3dfd2ba5484f0b89ef1cb8d085",
+    "plan_action_count": 1,
+    "consented_image_references": [],
+    "privileged_step_ids": [
+      "update-wsl"
+    ],
+    "windows_elevated_steps": [
+      {
+        "step_id": "update-wsl",
+        "elevated_step": "UPDATE_WSL"
+      }
+    ],
+    "required_licence_ids": [],
+    "required_acknowledgements": []
+  }
+}

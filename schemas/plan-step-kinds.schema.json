@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/plan-step-kinds.schema.json",
   "title": "InstallationPlan step-kind registry",
-  "description": "Format of registry/plan-step-kinds.json: the CLOSED vocabulary of InstallationPlan step kinds (CF12, CF13; docs/installation-plan.md). A plan step whose kind is not listed here is rejected (UNKNOWN_STEP_KIND). For each kind: the platforms and whether it is privileged there; the Windows elevated-helper operation; a required separate acknowledgement; whether a licence is required; which optional step members it requires or allows; the allowed values of the three flags; the official source URL prefixes (a guard rail; the pinned sha256 is the trust anchor); the execution preconditions; the fixed command templates per platform; and the title templates.",
+  "description": "Format of registry/plan-step-kinds.json: the CLOSED vocabulary of InstallationPlan step kinds (CF12, CF13; docs/installation-plan.md). A plan step whose kind is not listed here is rejected (UNKNOWN_STEP_KIND). For each kind: the platforms and whether it is privileged there; the Windows elevated-helper operation; a required separate acknowledgement; whether a licence is required; which optional step members it requires or allows; the allowed values of the three flags; the official source URL prefixes and the hosts a download may be redirected to (guard rails; the pinned sha256 is the trust anchor); the execution preconditions; the fixed command templates per platform; and the title templates.",
   "type": "object",
   "required": ["schema_version", "supported_ubuntu", "placeholders", "preconditions", "step_kinds"],
   "additionalProperties": false,
@@ -33,7 +33,7 @@
       }
     },
     "preconditions": {
-      "description": "Execution preconditions checked right before a step runs, against freshly observed facts (`reads`) and the consented plan step. A failing precondition stops the step with the reason code; the bootstrap operation moves from INSTALLING per on_reject.",
+      "description": "Execution preconditions checked right before a step runs, against freshly observed facts (`reads`) and the consented plan step (replacement_source_verified also reads the step that follows it in the consented plan). A failing precondition stops the step with the reason code; the bootstrap operation moves from INSTALLING (or WAITING_FOR_PRIVILEGE) per on_reject.",
       "type": "array",
       "minItems": 1,
       "items": {"$ref": "#/$defs/precondition"}
@@ -82,11 +82,23 @@
       "required": ["privileged"],
       "additionalProperties": false,
       "properties": {
+        "acknowledgement": {
+          "description": "An acknowledgement needed on this platform only (the kind-level `acknowledgement` applies on every platform of the kind; a kind never has both).",
+          "$ref": "#/$defs/acknowledgement"
+        },
+        "title": {
+          "description": "Title template on this platform, replacing the kind's `title` there (the effect of the step differs between platforms).",
+          "$ref": "#/$defs/localized"
+        },
         "privileged": {
           "description": "true: the step runs with host elevation (Windows: UAC through the elevated helper; Linux: sudo for the fixed commands of this kind). Root inside the Sprut WSL distribution is not host elevation.",
           "type": "boolean"
         }
       }
+    },
+    "acknowledgement": {
+      "description": "docker_group: membership in the docker group is equivalent to root (CLI --accept-docker-group). distro_removal: the Sprut distribution and the data inside it are removed (--accept-distro-removal). engine_restart: Docker Engine of the Linux host is restarted, which stops every container on it, also those that are not Sprut's (--accept-engine-restart).",
+      "enum": ["docker_group", "distro_removal", "engine_restart"]
     },
     "flag_rule": {
       "description": "never: the flag is false; always: the flag is true; may: the planner decides from the probe.",
@@ -94,7 +106,7 @@
     },
     "member": {"enum": ["image", "source", "wslconfig", "wslconfig_file", "distro_disk_size", "distro", "target_user"]},
     "command": {
-      "description": "One operation. argv: a program started with this exact argument list (no shell); argv[0] is absolute: `{system32}\\\\...` for a Windows program, or a Linux path (on Windows it runs inside the Sprut distribution as root through `{system32}\\\\wsl.exe --distribution {distro_name} --user root --exec`; on Linux privileged kinds run it through `/usr/bin/sudo --`). install_file: the core writes `content` to a file it owns and installs it at `path` with `mode` (`/usr/bin/install -D -m <mode>`, as root like argv). client_action: a fixed core operation (download_source: download step.source over HTTPS into a staging directory of the client; verify_source: run by the same principal as the step's commands (root through sudo or in the distribution, or the elevated helper), copy the download into a directory only that principal can write (Linux: `install -m 0600 -o root -g root`; Windows helper: an Administrators-only directory), compute the SHA-256 of that copy and compare it with step.source.sha256 (INTEGRITY_MISMATCH otherwise); `{verified_file}` is that copy; edit_wslconfig: the managed-key edit of docs/wsl-resources.md; engine_pull: engine API pull of step.image). when: only if step.source is present / absent.",
+      "description": "One operation. argv: a program started with this exact argument list (no shell); argv[0] is absolute: `{system32}\\\\...` for a Windows program, or a Linux path (on Windows it runs inside the Sprut distribution as root through `{system32}\\\\wsl.exe --distribution {distro_name} --user root --exec`; on Linux privileged kinds run it through `/usr/bin/sudo --`). install_file: the core writes `content` to a file it owns and installs it at `path` with `mode` (`/usr/bin/install -D -m <mode>`, as root like argv). client_action: a fixed core operation (download_source: download step.source over HTTPS into a staging directory of the client; verify_source: run by the same principal as the step's commands (root through sudo or in the distribution, or the elevated helper), copy the download into a directory only that principal can write (Linux: `install -m 0600 -o root -g root`; Windows helper: an Administrators-only directory), compute the SHA-256 of that copy and compare it with step.source.sha256 (INTEGRITY_MISMATCH otherwise); when that principal is root inside the Sprut distribution, the client first compares its own SHA-256 of the staged download with step.source.sha256 and hands the file over only if it matches; `{verified_file}` is that copy; edit_wslconfig: the managed-key edit of docs/wsl-resources.md; engine_pull: engine API pull of step.image). when: only if step.source is present / absent.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -120,7 +132,7 @@
     },
     "step_kind": {
       "type": "object",
-      "required": ["kind", "platforms", "required_members", "optional_members", "licence_required", "flags", "source_url_prefixes", "preconditions", "commands", "title", "note"],
+      "required": ["kind", "platforms", "required_members", "optional_members", "licence_required", "flags", "source_url_prefixes", "redirect_hosts", "preconditions", "commands", "title", "note"],
       "additionalProperties": false,
       "properties": {
         "kind": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
@@ -139,8 +151,8 @@
           "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
         },
         "acknowledgement": {
-          "description": "A separate explicit acknowledgement the user must give, beyond plan consent and --yes (guard input given_acknowledgements; CLI --accept-docker-group / --accept-distro-removal; GUI control unchecked by default).",
-          "enum": ["docker_group", "distro_removal"]
+          "description": "A separate explicit acknowledgement the user must give, beyond plan consent and --yes (guard input given_acknowledgements; CLI --accept-docker-group / --accept-distro-removal / --accept-engine-restart; GUI control unchecked by default). Here: on every platform of the kind; per platform: platforms.<platform>.acknowledgement.",
+          "$ref": "#/$defs/acknowledgement"
         },
         "licence_required": {"description": "A step of this kind must list at least one licence in licence_ids.", "type": "boolean"},
         "required_members": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/member"}},
@@ -156,10 +168,26 @@
           }
         },
         "source_url_prefixes": {
-          "description": "Official sources (a guard rail; the pinned sha256 is the trust anchor): the parsed final URL of a download must start with one of these prefixes. Each prefix is https://, a host and a path ending with `/`. Non-empty exactly when the kind requires or allows `source`.",
+          "description": "Official sources (a guard rail; the pinned sha256 is the trust anchor): the REQUESTED URL of a download (step.source.url) must start with one of these prefixes. Each prefix is https://, a host and a path ending with `/`. Non-empty exactly when the kind requires or allows `source`.",
           "type": "array",
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^https://[a-z0-9]+([.-][a-z0-9]+)*/([A-Za-z0-9_~+=-][A-Za-z0-9._~+=-]*/)*$"}
+        },
+        "redirect_hosts": {
+          "description": "Hosts a download of this kind may be redirected to, besides the host of the requested URL (docs/installation-plan.md rule 10). Bare lowercase DNS host names: no scheme, port, path, wildcard or IP address; compared exactly, never by suffix. Every hop is https with certificate verification, its host is the requested host or one of these, and there are at most 5 redirects; the pinned sha256 remains the integrity anchor. Empty when the kind has no source or its source is served by the requested host.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\\.[a-z]{2,63}$"}
+        },
+        "download": {
+          "description": "Limits of a download of this kind (docs/installation-plan.md rule 10); present exactly when the kind requires or allows `source`. max_bytes: the response body is refused when its announced length is larger and aborted when more bytes arrive (a size pinned by the client build for the artifact, when there is one, is checked in addition and is never larger). timeout_seconds: the whole download, redirects included. Exceeding either is SOURCE_UNAVAILABLE. The values and the meaning of timeout_seconds are provisional: at S-1 it is decided whether it becomes a stall timeout with a generous total, or whether downloads resume; until then it is the total time.",
+          "type": "object",
+          "required": ["max_bytes", "timeout_seconds"],
+          "additionalProperties": false,
+          "properties": {
+            "max_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400}
+          }
         },
         "preconditions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}},
         "environment": {
@@ -178,7 +206,7 @@
           }
         },
         "title": {
-          "description": "Title template. The only placeholder is {repository} (the repository part of the step's image), allowed only for kinds that require image. A step's title must equal the rendered template exactly.",
+          "description": "Title template (a platform may replace it: platforms.<platform>.title). The only placeholder is {repository} (the repository part of the step's image), allowed only for kinds that require image. A step's title must equal the rendered template exactly.",
           "$ref": "#/$defs/localized"
         },
         "title_without_source": {

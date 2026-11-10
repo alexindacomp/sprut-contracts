@@ -20,6 +20,11 @@ a public issue for it.
   `validate` check required, no force pushes.
 - Release tags `vMAJOR.MINOR.PATCH` are signed; clients pin only signed tags,
   and moving a client's submodule pin is reviewed by a human.
+- The run profile of the image's purpose is normative and has fixed limits in
+  `registry/run-profiles.json` (worker and inference profiles need their own
+  security review), and for a diagnostic image the diagnostic image protocol
+  (CR-57) is part of these contracts. `tools/validate.py` fails on an
+  allowlist entry whose purpose has no such profile.
 
 ## Release checklist
 
@@ -28,6 +33,8 @@ a public issue for it.
    marked "Mirror".
 3. Allowlist changes: each new entry names the image's source, purpose and
    build provenance in the pull request; a code owner reviews it.
-4. New or changed step kinds, command templates, source prefixes or pinned
+4. New or changed step kinds, command templates, preconditions, source
+   prefixes, redirect hosts, download limits, acknowledgements, titles (they
+   are what the user consents to), failure classes, run profiles or pinned
    digests: security review in the pull request.
 5. Branch protection is active and the tag is signed (`git tag -s`).

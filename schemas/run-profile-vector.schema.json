@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/run-profile-vector.schema.json",
+  "title": "Run profile test vectors",
+  "description": "Format of test-vectors/run-profiles/cases.json (registry/run-profiles.json, docs/images-and-ownership.md section 5). Each case gives a profile and the options of a `docker run` call, as the argument list between `run` and the image reference, and optionally `after_image`, the arguments that follow the image reference (default: none). expected=conforming: every option group of the profile is present exactly once as consecutive tokens, each placeholder token matching its parameter pattern, every other token belongs to an other_options group and nothing follows the image reference. expected=non_conforming: a group is missing, repeated or altered, another option or an argument after the image is present, or the profile is not defined yet (to_be_defined: no container of that purpose is run).",
+  "type": "object",
+  "required": ["description", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "description": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "profile", "options", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "profile": {"enum": ["diagnostic", "worker", "inference"]},
+          "options": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "after_image": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "expected": {"enum": ["conforming", "non_conforming"]}
+        }
+      }
+    }
+  }
+}

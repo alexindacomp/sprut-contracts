@@ -1,0 +1,58 @@
+{
+  "name": "windows-nvidia-toolkit",
+  "description": "Windows: the engine restarted by install_nvidia_toolkit is the one inside the Sprut distribution, so only Sprut's own containers stop (after a drain). The kind's title applies and no acknowledgement is required (CR-72).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "windows",
+    "current_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "ready",
+      "docker_engine": "running",
+      "nvidia_toolkit": "absent",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "wsl": "WSL2_READY",
+      "sprut_distro": "ready",
+      "docker_engine": "running",
+      "nvidia_toolkit": "installed",
+      "worker_image": "present"
+    },
+    "steps": [
+      {
+        "id": "install-nvidia-toolkit",
+        "kind": "install_nvidia_toolkit",
+        "title": {
+          "ru": "Установить NVIDIA Container Toolkit (Docker Engine в дистрибутиве Sprut будет перезапущен; его задачи сначала завершаются)",
+          "en": "Install the NVIDIA Container Toolkit (Docker Engine in the Sprut distribution is restarted; its tasks are drained first)"
+        },
+        "privileged": false,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 120000000,
+        "source": {
+          "url": "https://nvidia.github.io/libnvidia-container/gpgkey",
+          "sha256": "c880576d6cf75a48e5027a871bac70fd0421ab07d2b55f30877b21f1c87959c9"
+        }
+      }
+    ],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "disk_estimate_bytes": 120000000,
+    "hash": "14c5a095ee647053d92029cbbd7d2c466b2d628fda0f3372b2899037b551a929"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "14c5a095ee647053d92029cbbd7d2c466b2d628fda0f3372b2899037b551a929",
+    "plan_action_count": 1,
+    "consented_image_references": [],
+    "privileged_step_ids": [],
+    "windows_elevated_steps": [],
+    "required_licence_ids": [],
+    "required_acknowledgements": []
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/step-failures.schema.json",
+  "title": "Bootstrap step-failure registry",
+  "description": "Format of registry/step-failures.json (docs/installation-plan.md section 8, CR-45). A failure class says what went wrong while a command of a plan step, or a check of a bootstrap state outside plan steps, was executed; each class has exactly one outcome: the reason code, the state the bootstrap operation moves to and the type of the OperationEvent. `step_kinds` lists, per step kind and platform, the classes that can occur there; `states` does the same for the bootstrap states whose work is not a plan step. The last class of every list is its catch-all, so every failure of a step or of a check has an outcome. A failure is never reported with a reason code that describes another condition. Execution preconditions (registry/plan-step-kinds.json) and guards (registry/state-machines.json) are evaluated before a command runs and are not failure classes.",
+  "type": "object",
+  "required": ["schema_version", "failure_classes", "step_kinds", "states"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "failure_classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/failure_class"}
+    },
+    "step_kinds": {
+      "description": "Step kind (registry/plan-step-kinds.json) -> platform -> failure classes in the order of failure_classes; the last one is the catch-all.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/per_platform"}
+    },
+    "states": {
+      "description": "Bootstrap state whose work is not a plan step -> platform -> failure classes in the order of failure_classes; the last one is the catch-all.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/per_platform"}
+    }
+  },
+  "$defs": {
+    "localized": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": {
+        "ru": {"type": "string", "minLength": 1},
+        "en": {"type": "string", "minLength": 1}
+      }
+    },
+    "class_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+    "failure_class": {
+      "type": "object",
+      "required": ["id", "reason_code", "to", "event", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/class_id"},
+        "reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+        "to": {
+          "description": "State the bootstrap operation moves to from the state in which the failure happened.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+        },
+        "event": {"enum": ["error", "state"]},
+        "description": {
+          "description": "When a failure belongs to this class (normative).",
+          "$ref": "#/$defs/localized"
+        }
+      }
+    },
+    "class_list": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/class_id"}},
+    "per_platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "windows": {"$ref": "#/$defs/class_list"},
+        "linux": {"$ref": "#/$defs/class_list"}
+      },
+      "anyOf": [{"required": ["windows"]}, {"required": ["linux"]}]
+    }
+  }
+}

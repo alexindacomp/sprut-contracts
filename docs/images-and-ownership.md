@@ -1,10 +1,12 @@
 # Images, allowlist and ownership (CF20–CF23)
 
-Status: normative from sprut-contracts 0.2.0. Files:
+Status: normative from sprut-contracts 0.2.0; section 5 (run profiles) from
+0.3.0. Files:
 `schemas/image-reference.schema.json`, `schemas/image-allowlist.schema.json`,
 `registry/image-allowlist.json`, `schemas/ownership.schema.json`,
-`registry/ownership.json`, `test-vectors/image-allowlist/`,
-`test-vectors/ownership/`.
+`registry/ownership.json`, `schemas/run-profiles.schema.json`,
+`registry/run-profiles.json`, `test-vectors/image-allowlist/`,
+`test-vectors/ownership/`, `test-vectors/run-profiles/`.
 
 ## 1. ImageDigest and ImageReference
 
@@ -45,7 +47,7 @@ inclusive).
    digests (`DUPLICATE_DIGEST`). An invalid bundled allowlist is a build
    failure; at runtime it means every image is refused.
 3. **Fail closed.** An empty `entries` array is valid: every pull and run is
-   refused with IMAGE_NOT_ALLOWED. 0.2.0 ships it empty because no worker
+   refused with IMAGE_NOT_ALLOWED. 0.3.0 still ships it empty because no
    image is pinned yet.
 4. **Guard input.** `allowlist` is the ImageReferences `<repository>@<digest>`
    of the entries with `min_client_version` <= client version <=
@@ -69,6 +71,11 @@ inclusive).
    signed release tags; clients pin only signed tags. `tools/validate.py`
    fails on a non-empty allowlist while `CODEOWNERS` is missing; the release
    checklist is in `SECURITY.md`.
+8. **Run profile first (SEC-15).** An image is allowlisted only for a purpose
+   whose run profile is normative and has fixed limits (section 5), and a
+   diagnostic image only after the diagnostic image protocol is part of these
+   contracts (CR-57, see README "Planned"). `tools/validate.py` fails on an
+   entry whose purpose has no such profile.
 
 ## 3. Docker Engine endpoint (SEC-B1)
 
@@ -90,6 +97,27 @@ inclusive).
 4. Containers never use `--network=host`; if a port is ever published, it binds
    `127.0.0.1` only. Programs are started by absolute path, never via `PATH`
    or a shell.
+5. **Not Docker Desktop (CW06).** The engine Sprut uses is the Docker Engine
+   of the Sprut distribution (Windows) or of the host (Linux), never Docker
+   Desktop. The client reads the engine's identity: `OperatingSystem` of
+   `docker info` (Engine API `GET /info`) and `Platform.Name` of
+   `docker version` (`GET /version`). If `OperatingSystem` equals
+   `Docker Desktop` or `Platform.Name` starts with `Docker Desktop`, the
+   engine is refused with ENGINE_DOCKER_DESKTOP → ACTION_REQUIRED and nothing
+   in it is changed. On Windows this is the case when the Docker Desktop WSL
+   integration is enabled for the Sprut distribution; the next action is to
+   disable it for that distribution. The check is made in PROBING and
+   ENGINE_CHECK together with the endpoint check and, like it, repeated
+   before every container or task run. Whenever the Docker CLI is present
+   the identity is read before the state of `docker.service` is used, and a
+   Docker Desktop answer wins whatever that state is. An identity that cannot
+   be read is ENGINE_COMMAND_FAILED, not a verdict, unless the service
+   manager reports the daemon inactive (then the daemon is stopped,
+   `docs/installation-plan.md` section 8.2). This is the failure class
+   `engine_docker_desktop` of `registry/step-failures.json`
+   (`docs/installation-plan.md` section 8); the guard `engine_endpoint_local`
+   is unchanged, and ENGINE_REMOTE_CONTEXT stays the code of an endpoint that
+   is not a local unix socket.
 
 ## 4. Ownership labels
 
@@ -138,3 +166,62 @@ Rules (the `rules` of the registry):
 
 `test-vectors/ownership/cases.json` fixes the ownership decision and the
 caller-label check.
+
+## 5. Container run profiles (SEC-15)
+
+`registry/run-profiles.json` fixes how a container is started, per image
+purpose. A client never starts a container in another way.
+
+| Profile | Status |
+|---|---|
+| `diagnostic` (smoke test, CF16) | normative, below |
+| `worker`, `inference` | to be defined with their own security review; until then no container of that purpose is run and no image of that purpose is allowlisted |
+
+The diagnostic container is started with exactly these options:
+
+| `docker run` option | Engine API (Go SDK) | Purpose |
+|---|---|---|
+| `--pull=never` | `ContainerCreate` on a present image, no `ImagePull` | no download can bypass the IMAGE_PULL guard |
+| `--network none` | `HostConfig.NetworkMode = "none"` | the diagnostic needs no network |
+| `--cap-drop ALL` | `HostConfig.CapDrop = ["ALL"]` | no Linux capabilities |
+| `--security-opt no-new-privileges` | `HostConfig.SecurityOpt = ["no-new-privileges"]` | no privilege gain through setuid programs |
+| `--read-only` | `HostConfig.ReadonlyRootfs = true` | read-only root filesystem |
+| `--pids-limit <n>` | `HostConfig.Resources.PidsLimit = n` | bounded number of processes |
+| `--memory <limit>` | `HostConfig.Resources.Memory = limit` | bounded memory |
+
+1. **Each option exactly once**, in the token form of the registry (CLI) or
+   as the equivalent field (API). A repeated option, also with the same
+   value (`--memory` twice, `--pids-limit` twice, `--pull=never` twice), is
+   non-conforming, so that no later option can override an earlier one.
+2. **Closed option set.** Besides these options a diagnostic run carries only
+   `--detach`, `--name <name>` and `--label <key=value>` (the ownership labels
+   of section 4 and accepted caller labels). Any other option makes the run
+   non-conforming: no mount, device, added capability, other network, host
+   namespace or privileged mode. With the Engine API every other `HostConfig`
+   field keeps its zero value. An option the diagnostic protocol needs, for
+   example the mount of its state volume, is added to the registry together
+   with that protocol (CR-57), never by a client alone.
+3. **Nothing after the image (CR-76).** No command and no argument follows
+   the image reference: the image's own entrypoint runs. With the Engine API
+   `Config` carries only `Image` and `Labels` until the diagnostic protocol
+   (CR-57) says otherwise: no `Cmd`, `Entrypoint`, `Env`, `User`,
+   `WorkingDir`, `Volumes` or `ExposedPorts`. CR-57 also has to decide
+   `--user` (a non-root user), `--memory-swap` (no swap beyond the memory
+   limit) and `--cpus`, which this profile does not set yet.
+4. **Limits.** `<n>` is a positive integer; `<limit>` is a positive integer
+   followed by `m` or `g`. Their values are fixed in the registry as `limits`
+   together with the diagnostic image protocol; until then they are
+   provisional client constants and no diagnostic image can be allowlisted
+   (section 2, rule 8).
+5. **Always removed.** The diagnostic container is removed after every run:
+   after success, after a failed check, when the smoke-test timeout expires
+   (it is stopped first) and when the operation is cancelled. A container
+   that a crashed run left behind is removed on the next start, found by its
+   recorded id and checked as in section 4. Removal is by that id, never by a
+   filter alone. If the removal itself fails, the operation ends with
+   ENGINE_COMMAND_FAILED (`docs/installation-plan.md` section 8) and the id
+   stays in the journal for the next start.
+6. The endpoint check and the Docker Desktop check of section 3 and the
+   allowlist check precede every run.
+
+`test-vectors/run-profiles/cases.json` fixes which option lists conform.

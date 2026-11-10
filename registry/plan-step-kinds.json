@@ -15,9 +15,9 @@
     {"name": "distro_disk_size", "description": "step.distro_disk_size."}
   ],
   "preconditions": [
-    {"id": "source_verified", "reads": ["downloaded_sha256"],
+    {"id": "source_verified", "reads": ["downloaded_sha256", "staged_sha256"],
      "fails_with": ["INTEGRITY_MISMATCH"], "on_reject": {"INTEGRITY_MISMATCH": {"to": "FAILED", "event": "error"}},
-     "description": {"ru": "SHA-256 загруженного файла, вычисленный процессом, который его использует (для шагов с правами — сам elevated helper/процесс под sudo), равен step.source.sha256. Шаг без source допустим только для kind с необязательным source (загрузку выполняет wsl.exe, это указано в заголовке).", "en": "The SHA-256 of the downloaded file, computed by the process that uses it (for privileged steps the elevated helper / the sudo process itself), equals step.source.sha256. A step without source is allowed only for kinds whose source is optional (wsl.exe downloads; the title says so)."}},
+     "description": {"ru": "SHA-256 проверенной копии (downloaded_sha256), вычисленный процессом, который её использует (для шагов с правами — сам elevated helper/процесс под sudo, в дистрибутиве Sprut — root внутри него), равен step.source.sha256. Если копию проверяет root внутри дистрибутива Sprut (Windows, {verified_file} использует Linux-программа), клиент до передачи файла в дистрибутив сам вычисляет SHA-256 загруженного файла (staged_sha256), и он тоже обязан быть равен step.source.sha256: совпасть должны оба значения (SEC-12). Шаг без source допустим только для kind с необязательным source (загрузку выполняет wsl.exe, это указано в заголовке).", "en": "The SHA-256 of the verified copy (downloaded_sha256), computed by the process that uses it (for privileged steps the elevated helper / the sudo process itself, in the Sprut distribution root inside it), equals step.source.sha256. When the copy is verified by root inside the Sprut distribution (Windows, {verified_file} is used by a Linux program), the client also computes the SHA-256 of the staged download itself before handing the file to the distribution (staged_sha256), and it must equal step.source.sha256 as well: both values must match (SEC-12). A step without source is allowed only for kinds whose source is optional (wsl.exe downloads; the title says so)."}},
     {"id": "ubuntu_supported", "reads": ["ubuntu_codename", "architecture"],
      "fails_with": ["UNSUPPORTED_PROFILE"], "on_reject": {"UNSUPPORTED_PROFILE": {"to": "FAILED", "event": "error"}},
      "description": {"ru": "Кодовое имя Ubuntu есть в supported_ubuntu.codenames, архитектура — supported_ubuntu.architecture.", "en": "The Ubuntu codename is in supported_ubuntu.codenames and the architecture equals supported_ubuntu.architecture."}},
@@ -31,9 +31,16 @@
     {"id": "wslconfig_unchanged", "reads": ["wslconfig_sha256"],
      "fails_with": ["PLAN_STALE"], "on_reject": {"PLAN_STALE": {"to": "PROBING", "event": "state"}},
      "description": {"ru": "SHA-256 текущего .wslconfig (или absent) равен step.wslconfig_file.sha256: файл не менялся после показа плана.", "en": "The SHA-256 of the current .wslconfig (or absent) equals step.wslconfig_file.sha256: the file did not change since the plan was shown."}},
-    {"id": "wsl_restart_confirmed", "reads": ["sprut_drained", "wsl_restart_confirmed"],
+    {"id": "wsl_restart_confirmed", "reads": ["sprut_drained", "wsl_restart_confirmed", "registered_distributions", "running_distributions"],
      "fails_with": ["WSL_RESTART_REQUIRED"], "on_reject": {"WSL_RESTART_REQUIRED": {"to": "ACTION_REQUIRED", "event": "state"}},
-     "description": {"ru": "Задачи Sprut завершены (drain), и непосредственно перед перезапуском пользователь отдельно подтвердил его в диалоге, показывающем запущенные дистрибутивы WSL (CR04). Согласие с планом это подтверждение не заменяет.", "en": "Sprut tasks were drained, and right before the restart the user separately confirmed it in a dialog that lists the running WSL distributions (CR04). Plan consent does not replace this confirmation."}}
+     "description": {"ru": "Шаг останавливает все дистрибутивы WSL. restart_wsl: список запущенных дистрибутивов WSL прочитан (running_distributions — массив имён), задачи Sprut завершены (drain), и непосредственно перед перезапуском пользователь отдельно подтвердил его в диалоге, показывающем этот список (CR04). install_wsl и update_wsl (SEC-5: установка пакета WSL и wsl --update могут остановить все запущенные дистрибутивы): список зарегистрированных дистрибутивов прочитан (registered_distributions — массив имён); если у текущего пользователя нет ни одного зарегистрированного дистрибутива, условие выполнено без диалога (регистрации других пользователей компьютера клиенту не видны; что происходит с их дистрибутивами — проверка S-1); иначе нужны drain и такое же отдельное подтверждение в диалоге, показывающем зарегистрированные дистрибутивы. Список, который не удалось прочитать (факт отсутствует или не массив), — отказ (fail closed). Согласие с планом это подтверждение не заменяет.", "en": "The step stops all WSL distributions. restart_wsl: the list of running WSL distributions was read (running_distributions is an array of names), Sprut tasks were drained, and right before the restart the user separately confirmed it in a dialog that shows that list (CR04). install_wsl and update_wsl (SEC-5: installing the WSL package and wsl --update can stop every running distribution): the list of registered distributions was read (registered_distributions is an array of names); when the current user has no registered distribution the precondition holds without a dialog (registrations of other users of the computer are not visible to the client; what happens to their distributions is an S-1 check); otherwise the drain and the same separate confirmation are needed, in a dialog that shows the registered distributions. A list that could not be read (the fact is missing or not an array) fails closed. Plan consent does not replace this confirmation."}},
+    {"id": "sprut_drained", "reads": ["sprut_drained"],
+     "fails_with": ["DRAIN_TIMEOUT"], "on_reject": {"DRAIN_TIMEOUT": {"to": "ACTION_REQUIRED", "event": "error"}},
+     "description": {"ru": "Шаг останавливает дистрибутив Sprut (wsl --terminate, wsl --unregister) или останавливает либо перезапускает Docker Engine (systemctl stop/restart docker.service): задачи Sprut завершены (drain: приём задач прекращён, задачи завершены или остановлены по политике, освобождение ресурсов подтверждено). Пока это не так, шаг не выполняется (CR-49, CR-72).", "en": "The step stops the Sprut distribution (wsl --terminate, wsl --unregister) or stops or restarts Docker Engine (systemctl stop/restart docker.service): Sprut tasks were drained (no new tasks accepted, tasks finished or stopped per policy, the release of resources confirmed). Until then the step is not run (CR-49, CR-72)."}},
+    {"id": "replacement_source_verified", "reads": ["replacement_downloaded_sha256"],
+     "fails_with": ["SOURCE_UNAVAILABLE", "INTEGRITY_MISMATCH"],
+     "on_reject": {"SOURCE_UNAVAILABLE": {"to": "FAILED", "event": "error"}, "INTEGRITY_MISMATCH": {"to": "FAILED", "event": "error"}},
+     "description": {"ru": "До удаления дистрибутива источник парного шага import_distro (следующий шаг согласованного плана) уже загружен и проверен: SHA-256 его проверенной копии (replacement_downloaded_sha256) равен source.sha256 этого следующего шага. Копии нет (загрузка не удалась, факт отсутствует, следующий шаг — не import_distro с source) — SOURCE_UNAVAILABLE; хеш другой — INTEGRITY_MISMATCH. В обоих случаях ничего не удаляется. Проверенная копия хранится до завершения импорта, и import_distro использует именно её (SEC-1).", "en": "Before the distribution is removed, the source of the paired import_distro step (the next step of the consented plan) is already downloaded and verified: the SHA-256 of its verified copy (replacement_downloaded_sha256) equals source.sha256 of that next step. No copy (the download failed, the fact is missing, the next step is not an import_distro with a source) is SOURCE_UNAVAILABLE; another hash is INTEGRITY_MISMATCH. In both cases nothing is removed. The verified copy is kept until the import ends, and import_distro uses exactly that copy (SEC-1)."}}
   ],
   "step_kinds": [
     {
@@ -45,6 +52,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": [],
       "commands": {"windows": [
         {"argv": ["{system32}\\dism.exe", "/online", "/enable-feature", "/featurename:Microsoft-Windows-Subsystem-Linux", "/all", "/norestart"]}
@@ -64,6 +72,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": [],
       "commands": {"windows": [
         {"argv": ["{system32}\\dism.exe", "/online", "/enable-feature", "/featurename:VirtualMachinePlatform", "/all", "/norestart"]}
@@ -83,7 +92,9 @@
       "licence_required": false,
       "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": ["https://github.com/microsoft/WSL/releases/download/"],
-      "preconditions": ["source_verified"],
+      "redirect_hosts": ["objects.githubusercontent.com", "release-assets.githubusercontent.com"],
+      "download": {"max_bytes": 536870912, "timeout_seconds": 1800},
+      "preconditions": ["wsl_restart_confirmed", "source_verified"],
       "commands": {"windows": [
         {"when": "source_present", "client_action": "download_source"},
         {"when": "source_present", "client_action": "verify_source"},
@@ -91,14 +102,14 @@
         {"when": "source_absent", "argv": ["{system32}\\wsl.exe", "--install", "--no-distribution"]}
       ]},
       "title": {
-        "ru": "Установить WSL из официального источника",
-        "en": "Install WSL from the official source"
+        "ru": "Установить WSL из официального источника (запущенные дистрибутивы WSL могут быть остановлены)",
+        "en": "Install WSL from the official source (running WSL distributions may be stopped)"
       },
       "title_without_source": {
-        "ru": "Установить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш)",
-        "en": "Install WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash)"
+        "ru": "Установить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш; запущенные дистрибутивы WSL могут быть остановлены)",
+        "en": "Install WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash; running WSL distributions may be stopped)"
       },
-      "note": "CW03. With source: the client's pinned package, verified by the elevated helper. Without source: wsl.exe downloads, unverified by Sprut, and the title says so. The path is fixed at S-1; source prefix provisional, to confirm at S-1."
+      "note": "CW03. With source: the client's pinned package, verified by the elevated helper. Without source: wsl.exe downloads, unverified by Sprut, and the title says so. The path is fixed at S-1; source prefix, redirect_hosts (the GitHub release-asset CDN hosts) and the download limits provisional, to confirm at S-1. download.timeout_seconds is the total time of the download for now; S-1 decision: a stall timeout with a generous total, or resume. SEC-5: installing the WSL package can stop every running WSL distribution, so the step needs the separate confirmation wsl_restart_confirmed whenever a distribution is registered; the real-host behaviour is an S-1 check. requires_reboot is `may`: the planner's forecast; the elevated helper's result carries reboot_required, the fact (docs/installation-plan.md section 9)."
     },
     {
       "kind": "update_wsl",
@@ -109,7 +120,9 @@
       "licence_required": false,
       "flags": {"requires_reboot": "may", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": ["https://github.com/microsoft/WSL/releases/download/"],
-      "preconditions": ["source_verified"],
+      "redirect_hosts": ["objects.githubusercontent.com", "release-assets.githubusercontent.com"],
+      "download": {"max_bytes": 536870912, "timeout_seconds": 1800},
+      "preconditions": ["wsl_restart_confirmed", "source_verified"],
       "commands": {"windows": [
         {"when": "source_present", "client_action": "download_source"},
         {"when": "source_present", "client_action": "verify_source"},
@@ -117,14 +130,14 @@
         {"when": "source_absent", "argv": ["{system32}\\wsl.exe", "--update"]}
       ]},
       "title": {
-        "ru": "Обновить WSL",
-        "en": "Update WSL"
+        "ru": "Обновить WSL (запущенные дистрибутивы WSL могут быть остановлены)",
+        "en": "Update WSL (running WSL distributions may be stopped)"
       },
       "title_without_source": {
-        "ru": "Обновить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш)",
-        "en": "Update WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash)"
+        "ru": "Обновить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш; запущенные дистрибутивы WSL могут быть остановлены)",
+        "en": "Update WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash; running WSL distributions may be stopped)"
       },
-      "note": "CW03. Separate plan step for WSL_OUTDATED; source as for install_wsl."
+      "note": "CW03. Separate plan step for WSL_OUTDATED; source, redirect_hosts and reboot as for install_wsl. SEC-5: wsl --update and the WSL package can stop every running WSL distribution, so the step needs the separate confirmation wsl_restart_confirmed whenever a distribution is registered; verifying on a real host which distributions wsl --update stops is an S-1 check."
     },
     {
       "kind": "unregister_distro",
@@ -135,7 +148,8 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
-      "preconditions": ["distro_owned"],
+      "redirect_hosts": [],
+      "preconditions": ["distro_owned", "sprut_drained", "replacement_source_verified"],
       "commands": {"windows": [
         {"argv": ["{system32}\\wsl.exe", "--unregister", "{distro_name}"]}
       ]},
@@ -143,7 +157,7 @@
         "ru": "Удалить повреждённый дистрибутив WSL Sprut (данные внутри него будут потеряны)",
         "en": "Remove the damaged Sprut WSL distribution (data inside it will be lost)"
       },
-      "note": "CW04. Only the Sprut distribution, verified by its BasePath; needs the separate distro_removal acknowledgement; immediately followed by import_distro. An export/backup option before removal is planned."
+      "note": "CW04. Only the Sprut distribution, verified by its BasePath; needs the separate distro_removal acknowledgement; immediately followed by import_distro. Before it runs, Sprut tasks are drained and the source of that import_distro is already downloaded and verified (replacement_source_verified, SEC-1); otherwise nothing is removed. An export/backup option before removal is planned."
     },
     {
       "kind": "import_distro",
@@ -153,6 +167,8 @@
       "licence_required": true,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": ["https://cloud-images.ubuntu.com/wsl/", "https://releases.ubuntu.com/"],
+      "redirect_hosts": [],
+      "download": {"max_bytes": 1073741824, "timeout_seconds": 3600},
       "preconditions": ["source_verified"],
       "commands": {"windows": [
         {"client_action": "download_source"},
@@ -163,7 +179,7 @@
         "ru": "Создать дистрибутив WSL Sprut из образа Ubuntu",
         "en": "Create the Sprut WSL distribution from the Ubuntu image"
       },
-      "note": "CW04. Pinned Ubuntu LTS rootfs, source.sha256 = SHA-256 of the archive. Source prefixes provisional, to confirm at S-1 (Q10)."
+      "note": "CW04. Pinned Ubuntu LTS rootfs, source.sha256 = SHA-256 of the archive. Source prefixes and download limits provisional, to confirm at S-1 (Q10). download.timeout_seconds is the total time of the download for now; S-1 decision: a stall timeout with a generous total, or resume (a slow connection must not make the rootfs unreachable). After unregister_distro the step uses the copy that was verified before the removal; it is re-hashed (source_verified), never downloaded again."
     },
     {
       "kind": "configure_distro",
@@ -173,16 +189,17 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
-      "preconditions": [],
+      "redirect_hosts": [],
+      "preconditions": ["sprut_drained"],
       "commands": {"windows": [
         {"install_file": {"path": "/etc/wsl.conf", "mode": "0644", "content": "[boot]\nsystemd=true\n"}},
         {"argv": ["{system32}\\wsl.exe", "--terminate", "{distro_name}"]}
       ]},
       "title": {
-        "ru": "Включить systemd в дистрибутиве Sprut",
-        "en": "Enable systemd in the Sprut distribution"
+        "ru": "Включить systemd в дистрибутиве Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+        "en": "Enable systemd in the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
       },
-      "note": "CW05. Restarts only the Sprut distribution."
+      "note": "CW05. Restarts only the Sprut distribution (wsl --terminate), after a drain of Sprut tasks (sprut_drained, CR-49)."
     },
     {
       "kind": "apt_add_docker_repo",
@@ -192,6 +209,8 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": ["https://download.docker.com/linux/ubuntu/"],
+      "redirect_hosts": [],
+      "download": {"max_bytes": 65536, "timeout_seconds": 60},
       "preconditions": ["ubuntu_supported", "source_verified"],
       "environment": {"DEBIAN_FRONTEND": "noninteractive"},
       "commands": {
@@ -200,21 +219,21 @@
           {"client_action": "verify_source"},
           {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/docker.asc"]},
           {"install_file": {"path": "/etc/apt/sources.list.d/docker.list", "mode": "0644", "content": "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {codename} stable\n"}},
-          {"argv": ["/usr/bin/apt-get", "update"]}
+          {"argv": ["/usr/bin/apt-get", "update", "-o", "APT::Update::Error-Mode=any"]}
         ],
         "linux": [
           {"client_action": "download_source"},
           {"client_action": "verify_source"},
           {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/docker.asc"]},
           {"install_file": {"path": "/etc/apt/sources.list.d/docker.list", "mode": "0644", "content": "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {codename} stable\n"}},
-          {"argv": ["/usr/bin/apt-get", "update"]}
+          {"argv": ["/usr/bin/apt-get", "update", "-o", "APT::Update::Error-Mode=any"]}
         ]
       },
       "title": {
         "ru": "Подключить официальный apt-репозиторий Docker",
         "en": "Add the official Docker apt repository"
       },
-      "note": "Spec 7.4 item 2, CW05. source = repository signing key; the key is trusted only for this repository (signed-by), never added to the global trust store. Source prefix provisional, to confirm at S-1."
+      "note": "Spec 7.4 item 2, CW05. source = repository signing key; the key is trusted only for this repository (signed-by), never added to the global trust store. Source prefix provisional, to confirm at S-1. apt-get update runs with APT::Update::Error-Mode=any, so that an index that cannot be fetched or verified gives a non-zero exit status (by default apt-get update exits 0 with warnings); the option is to be confirmed on jammy at S-1. The update covers every configured source, because the Docker packages depend on packages of the Ubuntu archive whose indexes must be present and current; on a Linux host a foreign source that cannot be fetched therefore fails the step (SOURCE_UNAVAILABLE) and is never edited or disabled by Sprut."
     },
     {
       "kind": "install_docker_engine",
@@ -224,6 +243,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": ["ubuntu_supported"],
       "environment": {"DEBIAN_FRONTEND": "noninteractive"},
       "commands": {
@@ -249,6 +269,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "always", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": ["target_user_current"],
       "commands": {"linux": [
         {"argv": ["/usr/sbin/usermod", "--append", "--groups", "docker", "{target_user}"]}
@@ -261,13 +282,25 @@
     },
     {
       "kind": "install_nvidia_toolkit",
-      "platforms": {"windows": {"privileged": false}, "linux": {"privileged": true}},
+      "platforms": {
+        "windows": {"privileged": false},
+        "linux": {
+          "privileged": true,
+          "acknowledgement": "engine_restart",
+          "title": {
+            "ru": "Установить NVIDIA Container Toolkit (Docker Engine будет перезапущен: все контейнеры на этом компьютере будут остановлены)",
+            "en": "Install the NVIDIA Container Toolkit (Docker Engine is restarted: all containers on this computer are stopped)"
+          }
+        }
+      },
       "required_members": ["source"],
       "optional_members": [],
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": ["https://nvidia.github.io/libnvidia-container/"],
-      "preconditions": ["ubuntu_supported", "source_verified"],
+      "redirect_hosts": [],
+      "download": {"max_bytes": 65536, "timeout_seconds": 60},
+      "preconditions": ["ubuntu_supported", "sprut_drained", "source_verified"],
       "environment": {"DEBIAN_FRONTEND": "noninteractive"},
       "commands": {
         "windows": [
@@ -275,7 +308,7 @@
           {"client_action": "verify_source"},
           {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/nvidia-container-toolkit.asc"]},
           {"install_file": {"path": "/etc/apt/sources.list.d/nvidia-container-toolkit.list", "mode": "0644", "content": "deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.asc] https://nvidia.github.io/libnvidia-container/stable/deb/amd64 /\n"}},
-          {"argv": ["/usr/bin/apt-get", "update"]},
+          {"argv": ["/usr/bin/apt-get", "update", "-o", "APT::Update::Error-Mode=any"]},
           {"argv": ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "nvidia-container-toolkit"]},
           {"argv": ["/usr/bin/nvidia-ctk", "runtime", "configure", "--runtime=docker"]},
           {"argv": ["/usr/bin/systemctl", "restart", "docker.service"]}
@@ -285,17 +318,17 @@
           {"client_action": "verify_source"},
           {"argv": ["/usr/bin/install", "-D", "-m", "0644", "{verified_file}", "/etc/apt/keyrings/nvidia-container-toolkit.asc"]},
           {"install_file": {"path": "/etc/apt/sources.list.d/nvidia-container-toolkit.list", "mode": "0644", "content": "deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.asc] https://nvidia.github.io/libnvidia-container/stable/deb/amd64 /\n"}},
-          {"argv": ["/usr/bin/apt-get", "update"]},
+          {"argv": ["/usr/bin/apt-get", "update", "-o", "APT::Update::Error-Mode=any"]},
           {"argv": ["/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "nvidia-container-toolkit"]},
           {"argv": ["/usr/bin/nvidia-ctk", "runtime", "configure", "--runtime=docker"]},
           {"argv": ["/usr/bin/systemctl", "restart", "docker.service"]}
         ]
       },
       "title": {
-        "ru": "Установить NVIDIA Container Toolkit",
-        "en": "Install the NVIDIA Container Toolkit"
+        "ru": "Установить NVIDIA Container Toolkit (Docker Engine в дистрибутиве Sprut будет перезапущен; его задачи сначала завершаются)",
+        "en": "Install the NVIDIA Container Toolkit (Docker Engine in the Sprut distribution is restarted; its tasks are drained first)"
       },
-      "note": "Spec 7.4 item 1, CW09. Optional, by separate consent; source = repository signing key, scoped with signed-by. The NVIDIA driver is never installed or replaced. Source prefix provisional, to confirm at S-1."
+      "note": "Spec 7.4 item 1, CW09. Optional, by separate consent; source = repository signing key, scoped with signed-by. The NVIDIA driver is never installed or replaced. Source prefix provisional, to confirm at S-1. The step restarts docker.service, which stops every container of that engine: it runs only after a drain of Sprut tasks (sprut_drained). On Linux the engine is the host's, so containers that are not Sprut's stop too: the Linux title says so and the step needs the separate engine_restart acknowledgement (CLI --accept-engine-restart). Replacing the restart by a configuration reload is an S-1 investigation."
     },
     {
       "kind": "start_engine",
@@ -305,6 +338,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": [],
       "commands": {
         "windows": [{"argv": ["/usr/bin/systemctl", "enable", "--now", "docker.service"]}],
@@ -324,6 +358,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "always"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": ["wslconfig_unchanged"],
       "commands": {"windows": [{"client_action": "edit_wslconfig"}]},
       "title": {
@@ -340,15 +375,17 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
-      "preconditions": [],
+      "redirect_hosts": [],
+      "preconditions": ["sprut_drained"],
       "commands": {"windows": [
+        {"argv": ["{system32}\\wsl.exe", "--terminate", "{distro_name}"]},
         {"argv": ["{system32}\\wsl.exe", "--manage", "{distro_name}", "--resize", "{distro_disk_size}"]}
       ]},
       "title": {
-        "ru": "Изменить максимальный размер диска дистрибутива Sprut",
-        "en": "Change the maximum disk size of the Sprut distribution"
+        "ru": "Изменить максимальный размер диска дистрибутива Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+        "en": "Change the maximum disk size of the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
       },
-      "note": "CR01, CR02. Sprut distribution only; never .wslconfig defaultVhdSize."
+      "note": "CR01, CR02. Sprut distribution only; never .wslconfig defaultVhdSize. wsl --manage --resize needs a stopped distribution: the template terminates the Sprut distribution first, after a drain of Sprut tasks (sprut_drained, CR-49)."
     },
     {
       "kind": "restart_wsl",
@@ -358,13 +395,14 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": ["wsl_restart_confirmed"],
       "commands": {"windows": [{"argv": ["{system32}\\wsl.exe", "--shutdown"]}]},
       "title": {
         "ru": "Перезапустить WSL (остановит все дистрибутивы WSL)",
         "en": "Restart WSL (stops all WSL distributions)"
       },
-      "note": "CR04. A separate confirmed action at execution time (precondition wsl_restart_confirmed), after a drain."
+      "note": "CR04. A separate confirmed action at execution time (precondition wsl_restart_confirmed), after a drain. The dialog lists the running WSL distributions; if that list cannot be read, the step is not run (fail closed)."
     },
     {
       "kind": "image_pull",
@@ -374,6 +412,7 @@
       "licence_required": false,
       "flags": {"requires_reboot": "never", "requires_relogin": "never", "requires_wsl_restart": "never"},
       "source_url_prefixes": [],
+      "redirect_hosts": [],
       "preconditions": [],
       "commands": {"windows": [{"client_action": "engine_pull"}], "linux": [{"client_action": "engine_pull"}]},
       "title": {

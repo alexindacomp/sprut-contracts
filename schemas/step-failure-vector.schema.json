@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alexindacomp/sprut-contracts/schemas/step-failure-vector.schema.json",
+  "title": "Step-failure test vectors",
+  "description": "Format of test-vectors/step-failures/cases.json (registry/step-failures.json, docs/installation-plan.md section 8). Each case names a platform, either a plan step kind or a bootstrap state whose work is not a plan step, and a failure class. expected=mapped: the class can occur there; the operation reports reason_code, moves to expected_next_state and emits an event of type expected_event. expected=not_applicable: the class cannot occur there, and an implementation never reports that failure with the class's reason code. classification_cases fix how the class is chosen from how a command ended (docs/installation-plan.md section 8.2): `command` is the kind of command, `result` how it ended, `expected` a failure class of that step kind or state, or `ok` (no failure), `answer` (the exit status of the probe is its answer; also an engine identity that could not be read while the service manager reports the daemon inactive: the daemon is stopped) or `evidence` (a complete, well-formed answer that is not the expected one).",
+  "type": "object",
+  "required": ["description", "cases", "classification_cases"],
+  "additionalProperties": false,
+  "properties": {
+    "description": {"type": "string", "minLength": 1},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "platform", "failure", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "platform": {"enum": ["windows", "linux"]},
+          "step_kind": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "state": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "failure": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "expected": {"enum": ["mapped", "not_applicable"]},
+          "reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "expected_next_state": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "expected_event": {"enum": ["error", "state"]}
+        },
+        "oneOf": [{"required": ["step_kind"]}, {"required": ["state"]}],
+        "if": {"properties": {"expected": {"const": "mapped"}}, "required": ["expected"]},
+        "then": {"required": ["reason_code", "expected_next_state", "expected_event"]},
+        "else": {"not": {"anyOf": [{"required": ["reason_code"]}, {"required": ["expected_next_state"]}, {"required": ["expected_event"]}]}}
+      }
+    },
+    "classification_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "platform", "command", "result", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "note": {"type": "string", "minLength": 1},
+          "platform": {"enum": ["windows", "linux"]},
+          "step_kind": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"},
+          "state": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"},
+          "command": {
+            "description": "download_source, client_action: the client actions of a step; client_file: the client writing its own copy of a file of the step (rootfs copy, verified copy on the host). engine_identity: reading the engine's identity (info and version). apt_update, apt_install: /usr/bin/apt-get update / install. program: any other program or install_file of a step. engine_pull: the pull of an image_pull step; engine: any other Docker Engine command; diagnostic: the wait for the diagnostic container. probe_output: a probe program whose answer is its output; probe_exit_status: a probe program whose answer is its exit status; host_query: a read of the host API that starts no process (registry, system information, files).",
+            "enum": ["download_source", "client_file", "client_action", "apt_update", "apt_install", "program",
+                     "engine_pull", "engine", "engine_identity", "diagnostic", "probe_output", "probe_exit_status",
+                     "host_query"]
+          },
+          "result": {
+            "type": "object",
+            "required": ["outcome"],
+            "additionalProperties": false,
+            "properties": {
+              "outcome": {
+                "description": "completed / failed: an action without a process of its own (for engine_identity: completed = the identity was read, given as `engine`). disk_full / storage_failed: the client could not write its own file because the system reported a full disk / for any other reason. not_started, timed_out, exited (with exit_status as the launcher reports it, a signed or unsigned 32-bit value on Windows): a process. request_error / stream_error: an Engine API request failed / the progress stream of an accepted pull reported an error. container_exited (with exit_status): the diagnostic container exited; wait_timed_out (with container): the wait reached the smoke-test timeout and an inspect showed the container `running`, or gave no answer (`unknown`).",
+                "enum": ["completed", "failed", "disk_full", "storage_failed", "not_started", "timed_out", "exited",
+                         "request_error", "stream_error", "container_exited", "wait_timed_out"]
+              },
+              "exit_status": {"type": "integer", "minimum": -2147483648, "maximum": 4294967295},
+              "output": {
+                "description": "For probe_output with exit status 0: expected (the expected answer), unexpected (complete and well-formed, but another answer), malformed (incomplete or not well-formed).",
+                "enum": ["expected", "unexpected", "malformed"]
+              },
+              "container": {"enum": ["running", "unknown"]},
+              "service_active": {
+                "description": "For engine_identity: the answer of `systemctl is-active docker.service`, when the case gives it. The identity is read before this answer is used (CR-82).",
+                "type": "boolean"
+              },
+              "engine": {
+                "description": "For engine_identity: OperatingSystem of the engine's info answer and Platform.Name of its version answer.",
+                "type": "object",
+                "required": ["operating_system", "platform_name"],
+                "additionalProperties": false,
+                "properties": {
+                  "operating_system": {"type": "string"},
+                  "platform_name": {"type": "string"}
+                }
+              }
+            }
+          },
+          "expected": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}
+        },
+        "oneOf": [{"required": ["step_kind"]}, {"required": ["state"]}]
+      }
+    }
+  }
+}

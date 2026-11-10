@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "parameters": [
+    {"name": "pids_limit", "pattern": "^[1-9][0-9]{0,4}$",
+     "description": "Maximum number of processes in the container (docker run --pids-limit; Engine API HostConfig.PidsLimit). A positive integer."},
+    {"name": "memory_limit", "pattern": "^[1-9][0-9]{0,5}[mg]$",
+     "description": "Memory limit of the container (docker run --memory; Engine API HostConfig.Memory, in bytes): a positive integer followed by m (MiB) or g (GiB)."},
+    {"name": "container_name", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+     "description": "Container name chosen by the core."},
+    {"name": "label", "pattern": "^[A-Za-z0-9._/:@+-]{1,1024}=[A-Za-z0-9._/:=@+-]{1,1024}$",
+     "description": "One label as key=value: the ownership labels of registry/ownership.json and accepted caller labels, in its charset."}
+  ],
+  "profiles": [
+    {
+      "id": "diagnostic",
+      "status": "normative",
+      "docker_run_options": [
+        ["--pull=never"],
+        ["--network", "none"],
+        ["--cap-drop", "ALL"],
+        ["--security-opt", "no-new-privileges"],
+        ["--read-only"],
+        ["--pids-limit", "{pids_limit}"],
+        ["--memory", "{memory_limit}"]
+      ],
+      "other_options": [
+        ["--detach"],
+        ["--name", "{container_name}"],
+        ["--label", "{label}"]
+      ],
+      "removal": "always",
+      "description": {
+        "ru": "Diagnostic-контейнер smoke test (CF16): без загрузки образа, без сети, без capabilities, без повышения привилегий, с корневой ФС только для чтения, с ограничением числа процессов и памяти. Контейнер удаляется после каждого запуска — также при ошибке, таймауте и отмене.",
+        "en": "The diagnostic container of the smoke test (CF16): no image pull, no network, no capabilities, no privilege escalation, a read-only root filesystem, a process limit and a memory limit. The container is removed after every run, also after a failure, a timeout and a cancellation."
+      },
+      "note": "SEC-15. The values of pids_limit and memory_limit are fixed here as `limits` together with the diagnostic image protocol (CR-57: compute, persistent state, logs, stop), before the first diagnostic image is allowlisted; until then they are provisional client constants and tools/validate.py refuses a diagnostic allowlist entry. The option set is closed and every option group occurs exactly once: an option the diagnostic protocol needs (for example the mount of its state volume) is added here with CR-57, not by a client. Nothing follows the image reference (no command, no arguments); with the Engine API Config carries only Image and Labels until CR-57. CR-57 also decides --user, --memory-swap and --cpus (CR-76)."
+    },
+    {
+      "id": "worker",
+      "status": "to_be_defined",
+      "description": {
+        "ru": "Worker-контейнер (обучение, задачи узла). Профиль запуска ещё не определён: он требует отдельного security review.",
+        "en": "The worker container (training, node tasks). The run profile is not defined yet: it needs its own security review."
+      },
+      "note": "To be defined with its own security review. Until then no worker container is run and no worker image is allowlisted. Sprut invariant 2 holds in any case: no Docker socket, no privileged mode, no host-root mounts, no host network."
+    },
+    {
+      "id": "inference",
+      "status": "to_be_defined",
+      "description": {
+        "ru": "Inference-контейнер (локальная генерация). Профиль запуска ещё не определён: он требует отдельного security review.",
+        "en": "The inference container (local generation). The run profile is not defined yet: it needs its own security review."
+      },
+      "note": "To be defined with its own security review. Until then no inference container is run and no inference image is allowlisted. Sprut invariant 2 holds in any case: no Docker socket, no privileged mode, no host-root mounts, no host network."
+    }
+  ]
+}

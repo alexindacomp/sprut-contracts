@@ -25,6 +25,9 @@ Checks:
     their derived guard inputs (docs/installation-plan.md);
   * image allowlist, ownership labels and WSL resources registries, schemas and
     vectors; schema definitions copied between files are identical;
+  * the step-failure registry (failure class -> reason code and next state, per
+    step kind and platform) and its vectors; the download redirect rule
+    (redirect_hosts) and the container run profiles with their vectors;
   * guard predicate `reads` equal the inputs of the reference predicates.
 
 Exits 0 when everything passes, 1 otherwise. Every failure is printed as
@@ -40,6 +43,7 @@ import math
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -71,6 +75,11 @@ P_PRECONDITION_VECTORS = "test-vectors/step-preconditions/cases.json"
 P_ALLOWLIST_VECTORS = "test-vectors/image-allowlist/cases.json"
 P_OWNERSHIP_VECTORS = "test-vectors/ownership/cases.json"
 P_WSL_VECTORS = "test-vectors/wsl-resources/cases.json"
+P_STEP_FAILURES = "registry/step-failures.json"
+P_STEP_FAILURE_VECTORS = "test-vectors/step-failures/cases.json"
+P_REDIRECT_VECTORS = "test-vectors/download-redirects/cases.json"
+P_RUN_PROFILES = "registry/run-profiles.json"
+P_RUN_PROFILE_VECTORS = "test-vectors/run-profiles/cases.json"
 # Files parsed under the hashing restrictions of docs/canonical-json.md section 3 (hashed or
 # hash-parsed documents and the vectors that carry them).
 HASHABLE_PREFIXES = (D_CANONICAL, D_PLANS, P_ALLOWLIST, P_ALLOWLIST_VECTORS)
@@ -100,10 +109,19 @@ SPEC_CONTRACT_REASON_CODES = [
 # Codes introduced by this repository (sprut-contracts 0.2.0, issue #3): touching a resource that
 # is not Sprut's, and a plan document that violates docs/installation-plan.md.
 CONTRACT_REASON_CODES = ["FOREIGN_RESOURCE", "PLAN_INVALID", "ENGINE_TCP_EXPOSED"]
+# sprut-contracts 0.3.0 (CR-45): a failure is reported with a code of its own, never with a code
+# that describes another condition.
+CONTRACT_REASON_CODES_0_3 = ["STEP_FAILED", "WSL_COMMAND_FAILED", "ENGINE_COMMAND_FAILED", "ELEVATED_STEP_FAILED",
+                             "ELEVATION_UNAVAILABLE", "SECRET_STORE_FAILED", "PACKAGE_INSTALL_FAILED", "PROBE_FAILED",
+                             "LOCAL_STORAGE_FAILED", "ENGINE_DOCKER_DESKTOP"]
 RAW_INVISIBLE = re.compile("[\u0000-\u001f\u007f-\u009f​-‏ -‮⁦-⁩﻿]")
 # Plan and ownership rules that --self-test switches off to prove the vectors notice.
 RULE_SWITCHES = {"unregister_pairing": True, "docker_access": True, "wslconfig_replaced": True,
-                 "licence_required": True, "adoption_needs_journal": True}
+                 "licence_required": True, "adoption_needs_journal": True,
+                 "redirect_host_check": True, "redirect_every_hop": True, "redirect_https_hops": True,
+                 "redirect_prefix_on_requested_only": True, "requested_url_strict": True, "download_size_cap": True,
+                 "run_profile_closed": True, "run_profile_exactly_once": True, "run_profile_nothing_after_image": True,
+                 "wsl_exit_range": True, "probe_failure_is_not_evidence": True, "docker_desktop_wins": True}
 _RULE_SWITCHES_DEFAULT = dict(RULE_SWITCHES)
 
 # InstallationPlan step kinds (docs/installation-plan.md, registry/plan-step-kinds.json): the closed
@@ -136,19 +154,81 @@ SPEC_FLAG_ALWAYS = {("add_user_to_docker_group", "requires_relogin"),  # spec 7.
                     ("write_wslconfig", "requires_wsl_restart")}     # CR04
 SPEC_REBOOT_MAY = set(SPEC_WINDOWS_ELEVATED)                            # CW03: only WSL/feature steps
 STEP_MEMBERS = ("image", "source", "wslconfig", "wslconfig_file", "distro_disk_size", "distro", "target_user")
+# CR-72: on a Linux host the engine restart of install_nvidia_toolkit stops containers that are not Sprut's.
+SPEC_PLATFORM_ACKNOWLEDGEMENTS = {("install_nvidia_toolkit", "linux"): "engine_restart"}
+# CR-71: by default apt-get update exits 0 when an index cannot be fetched.
+APT_UPDATE_ARGV = ["/usr/bin/apt-get", "update", "-o", "APT::Update::Error-Mode=any"]
+# CR-77: per-kind download limits (max_bytes, timeout_seconds). Provisional, confirmed at S-1.
+SPEC_DOWNLOAD_LIMITS = {
+    "install_wsl": (536870912, 1800), "update_wsl": (536870912, 1800), "import_distro": (1073741824, 3600),
+    "apt_add_docker_repo": (65536, 60), "install_nvidia_toolkit": (65536, 60),
+}
 SPEC_ACKNOWLEDGEMENTS = {"add_user_to_docker_group": "docker_group",  # spec 7.4 item 3, SEC-C1
                          "unregister_distro": "distro_removal"}        # CW04, SEC-C2
 SPEC_LICENCE_REQUIRED = {"import_distro"}                              # Ubuntu rootfs (Q10), SEC-m2
 SPEC_STEP_PRECONDITIONS = {
-    "install_wsl": ["source_verified"], "update_wsl": ["source_verified"], "import_distro": ["source_verified"],
+    # SEC-5: installing or updating WSL can stop every distribution; confirmed like restart_wsl, before the hash.
+    "install_wsl": ["wsl_restart_confirmed", "source_verified"],
+    "update_wsl": ["wsl_restart_confirmed", "source_verified"],
+    "import_distro": ["source_verified"],
     "apt_add_docker_repo": ["ubuntu_supported", "source_verified"],
-    "install_nvidia_toolkit": ["ubuntu_supported", "source_verified"],
+    "install_nvidia_toolkit": ["ubuntu_supported", "sprut_drained", "source_verified"],  # CR-72: restarts the engine
     "install_docker_engine": ["ubuntu_supported"],
     "add_user_to_docker_group": ["target_user_current"],
-    "unregister_distro": ["distro_owned"],
+    # SEC-1: nothing is removed before the replacement rootfs is downloaded and verified; CR-49: drain first.
+    "unregister_distro": ["distro_owned", "sprut_drained", "replacement_source_verified"],
+    "configure_distro": ["sprut_drained"],    # CR-49: it terminates the Sprut distribution
+    "resize_distro_disk": ["sprut_drained"],  # CR-49
     "write_wslconfig": ["wslconfig_unchanged"],
     "restart_wsl": ["wsl_restart_confirmed"],  # CR04: a separate confirmed action
 }
+# CR-58 / SEC-11: hosts a download may end on besides the requested host. Provisional (S-1): the
+# GitHub release-asset CDN hosts for the WSL package. Any other entry needs a change here.
+SPEC_REDIRECT_HOSTS = {
+    "install_wsl": ["objects.githubusercontent.com", "release-assets.githubusercontent.com"],
+    "update_wsl": ["objects.githubusercontent.com", "release-assets.githubusercontent.com"],
+}
+HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}")
+MAX_REDIRECTS = 5
+# CR-49: wsl.exe arguments (and the WSL package installer) that stop the Sprut distribution.
+DISTRO_STOPPING_ARGS = {"--terminate", "--unregister", "--shutdown", "--install", "--update"}
+# CR-72, CR-83: systemctl verbs that stop the engine (disable/mask only with --now) and its units.
+ENGINE_STOPPING_VERBS = {"stop", "restart", "try-restart", "reload-or-restart", "try-reload-or-restart", "kill"}
+ENGINE_UNITS = {"docker", "docker.service", "docker.socket"}
+# CR-45: failure class -> (reason code, next state, event). The order is the registry order.
+SPEC_FAILURE_CLASSES = {
+    "source_unavailable": ("SOURCE_UNAVAILABLE", "FAILED", "error"),
+    # The client's own files of a step: a full disk when positively known, any other write failure otherwise.
+    "insufficient_disk": ("INSUFFICIENT_DISK", "ACTION_REQUIRED", "error"),
+    "local_storage_failed": ("LOCAL_STORAGE_FAILED", "ACTION_REQUIRED", "error"),
+    "package_install_failed": ("PACKAGE_INSTALL_FAILED", "FAILED", "error"),
+    "wsl_command_failed": ("WSL_COMMAND_FAILED", "FAILED", "error"),
+    "command_failed": ("STEP_FAILED", "FAILED", "error"),
+    "plan_refused": ("PLAN_INVALID", "FAILED", "error"),  # CR-73: the elevated helper refused the plan
+    "elevation_unavailable": ("ELEVATION_UNAVAILABLE", "ACTION_REQUIRED", "error"),
+    "elevated_step_failed": ("ELEVATED_STEP_FAILED", "FAILED", "error"),
+    "smoke_test_failed": ("SMOKE_TEST_FAILED", "FAILED", "error"),
+    "engine_docker_desktop": ("ENGINE_DOCKER_DESKTOP", "ACTION_REQUIRED", "error"),  # CW06
+    "engine_command_failed": ("ENGINE_COMMAND_FAILED", "FAILED", "error"),
+    "probe_failed": ("PROBE_FAILED", "FAILED", "error"),  # CR-74: the catch-all of checks outside plan steps
+}
+DOCKER_DESKTOP = "Docker Desktop"
+# Bootstrap states whose work is not a plan step, and the failure classes of their checks.
+SPEC_STATE_FAILURES = {
+    "PROBING": {"windows": ["wsl_command_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"],
+                "linux": ["engine_docker_desktop", "engine_command_failed", "probe_failed"]},
+    "ENGINE_CHECK": {"windows": ["wsl_command_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"],
+                     "linux": ["engine_docker_desktop", "engine_command_failed", "probe_failed"]},
+    "SMOKE_TEST": {"windows": ["wsl_command_failed", "smoke_test_failed", "engine_docker_desktop",
+                               "engine_command_failed", "probe_failed"],
+                   "linux": ["smoke_test_failed", "engine_docker_desktop", "engine_command_failed", "probe_failed"]},
+}
+# SEC-15: the diagnostic (smoke-test) container; other profiles need their own security review.
+SPEC_DIAGNOSTIC_OPTIONS = [["--pull=never"], ["--network", "none"], ["--cap-drop", "ALL"],
+                           ["--security-opt", "no-new-privileges"], ["--read-only"],
+                           ["--pids-limit", "{pids_limit}"], ["--memory", "{memory_limit}"]]
+SPEC_DIAGNOSTIC_OTHER_OPTIONS = [["--detach"], ["--name", "{container_name}"], ["--label", "{label}"]]
+SPEC_RUN_PROFILES = {"diagnostic": "normative", "worker": "to_be_defined", "inference": "to_be_defined"}
 SPEC_PLACEHOLDERS = {"system32", "distro_name", "distro_base_path", "verified_file", "target_user", "codename",
                      "distro_disk_size"}
 # Placeholder -> step member it needs (a kind may use the placeholder only if it has that member).
@@ -281,12 +361,19 @@ SPEC_MACHINES = {
     },
     "wsl_availability": {
         "states": {"WSL2_READY", "WSL_OUTDATED", "WSL_MISSING", "VIRTUALIZATION_DISABLED",
-                   "UNSUPPORTED_PROFILE"},
+                   "WSL_POLICY_BLOCKED", "UNSUPPORTED_PROFILE"},
         "required_edges": [("WSL_MISSING", "WSL2_READY"), ("WSL_OUTDATED", "WSL2_READY")],
         "preds_equal": {},
-        "preds_subset": {},
-        "succ_subset": {"WSL2_READY": set()},  # CW02: a ready WSL2 is never changed
+        "preds_subset": {"WSL2_READY": {"WSL_MISSING", "WSL_OUTDATED"}},  # only what a plan step can fix
+        "succ_subset": {"WSL2_READY": set(),            # CW02: a ready WSL2 is never changed
+                        "WSL_POLICY_BLOCKED": set()},   # CR-45: a policy is never changed by the client
         "must_pass": [],
+        # CR-45: states the client cannot leave by itself, and the reason code each state carries.
+        "required_terminal": {"WSL2_READY", "VIRTUALIZATION_DISABLED", "WSL_POLICY_BLOCKED", "UNSUPPORTED_PROFILE"},
+        "state_reason_codes": {"WSL2_READY": None, "WSL_OUTDATED": "WSL_OUTDATED", "WSL_MISSING": "WSL_MISSING",
+                               "VIRTUALIZATION_DISABLED": "VIRTUALIZATION_DISABLED",
+                               "WSL_POLICY_BLOCKED": "WSL_POLICY_BLOCKED",
+                               "UNSUPPORTED_PROFILE": "UNSUPPORTED_PROFILE"},
     },
     "task": {
         "states": {"RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"},
@@ -996,7 +1083,8 @@ def check_reason_codes(ctx: dict, report: Report) -> dict:
                                "which does not list it in reason_codes")
     for source, codes in (("SPRUT-CLIENT-SPECIFICATION 8.3", SPEC_CLIENT_REASON_CODES),
                           ("03-CONTRACTS 7", SPEC_CONTRACT_REASON_CODES),
-                          ("sprut-contracts 0.2.0", CONTRACT_REASON_CODES)):
+                          ("sprut-contracts 0.2.0", CONTRACT_REASON_CODES),
+                          ("sprut-contracts 0.3.0", CONTRACT_REASON_CODES_0_3)):
         for rc in codes:
             if rc not in by_code:
                 report.error(name, f"{rc} from {source} is missing")
@@ -1046,6 +1134,12 @@ def check_structural_rules(mid: str, pairs: set, terminal: list, machine_def: di
     for start, target, via in spec["must_pass"]:
         if target in _reachable([start], edges, avoid=via):
             report.error(where, f"{target} is reachable from {start} without passing {via}")
+    for state in sorted(spec.get("required_terminal", set()) - set(terminal)):
+        report.error(where, f"{state} must be terminal (the client cannot leave it by itself)")
+    declared_codes = {s["name"]: s.get("reason_code") for s in machine_def["states"]}
+    for state, rc in spec.get("state_reason_codes", {}).items():
+        if state in declared_codes and declared_codes[state] != rc:
+            report.error(where, f"state {state} must carry reason_code {rc}, found {declared_codes[state]}")
     restart = spec.get("restart_to")
     if restart:
         for s in sorted({f for f, _ in pairs} | {t for _, t in pairs}):
@@ -1693,24 +1787,38 @@ def render_title(template: str, step: dict) -> str:
     return template.replace("{repository}", image.split("@", 1)[0] if isinstance(image, str) else "")
 
 
-def _pc_source_verified(step, rule, o, reg):
+def verified_in_distro(rule: dict, platform: str) -> bool:
+    """SEC-12: the verified copy is made and hashed by root inside the Sprut distribution, i.e. on
+    Windows `{verified_file}` is an argument of a Linux program."""
+    return platform == "windows" and any(
+        "argv" in op and op["argv"][0].startswith("/") and "{verified_file}" in op["argv"]
+        for op in rule["commands"].get("windows", []))
+
+
+def _pc_source_verified(step, rule, o, env):
     if "source" not in step:
         return None if "source" in rule["optional_members"] else "INTEGRITY_MISMATCH"
-    return None if o.get("downloaded_sha256") == step["source"]["sha256"] else "INTEGRITY_MISMATCH"
+    want = step["source"]["sha256"]
+    if o.get("downloaded_sha256") != want:
+        return "INTEGRITY_MISMATCH"
+    # SEC-12: the answer of the distribution is not enough; the client's own hash must match too.
+    if verified_in_distro(rule, env["platform"]) and o.get("staged_sha256") != want:
+        return "INTEGRITY_MISMATCH"
+    return None
 
 
-def _pc_ubuntu_supported(step, rule, o, reg):
-    sup = reg["supported_ubuntu"]
+def _pc_ubuntu_supported(step, rule, o, env):
+    sup = env["registry"]["supported_ubuntu"]
     ok = o.get("ubuntu_codename") in sup["codenames"] and o.get("architecture") == sup["architecture"]
     return None if ok else "UNSUPPORTED_PROFILE"
 
 
-def _pc_target_user_current(step, rule, o, reg):
+def _pc_target_user_current(step, rule, o, env):
     user = o.get("process_user")
     return None if "target_user" in step and user == step["target_user"] else "PLAN_STALE"
 
 
-def _pc_distro_owned(step, rule, o, reg):
+def _pc_distro_owned(step, rule, o, env):
     reg_d = o.get("registered_distro")
     if not isinstance(reg_d, dict):
         return "PLAN_STALE"
@@ -1719,25 +1827,61 @@ def _pc_distro_owned(step, rule, o, reg):
     return None if ok else "FOREIGN_RESOURCE"
 
 
-def _pc_wslconfig_unchanged(step, rule, o, reg):
+def _pc_wslconfig_unchanged(step, rule, o, env):
     current = o.get("wslconfig_sha256")
     return None if isinstance(current, str) and current == step.get("wslconfig_file", {}).get("sha256") else "PLAN_STALE"
 
 
-def _pc_wsl_restart_confirmed(step, rule, o, reg):
+def _name_list(value) -> bool:
+    """A list of distribution names that was actually read; anything else means "could not be read"."""
+    return isinstance(value, list) and all(isinstance(n, str) for n in value)
+
+
+def _pc_wsl_restart_confirmed(step, rule, o, env):
+    if rule["kind"] == "restart_wsl":
+        # CR04: the dialog lists the running distributions; without the list the step fails closed.
+        if not _name_list(o.get("running_distributions")):
+            return "WSL_RESTART_REQUIRED"
+    else:
+        # SEC-5 (install_wsl, update_wsl): needed when at least one distribution is registered.
+        registered = o.get("registered_distributions")
+        if not _name_list(registered):
+            return "WSL_RESTART_REQUIRED"
+        if not registered:
+            return None
     ok = o.get("sprut_drained") is True and o.get("wsl_restart_confirmed") is True
     return None if ok else "WSL_RESTART_REQUIRED"
 
 
+def _pc_sprut_drained(step, rule, o, env):
+    return None if o.get("sprut_drained") is True else "DRAIN_TIMEOUT"
+
+
+def _pc_replacement_source_verified(step, rule, o, env):
+    # SEC-1: the source of the paired import_distro (the next step of the consented plan).
+    nxt = env.get("next_step")
+    want = None
+    if isinstance(nxt, dict) and nxt.get("kind") == "import_distro" and isinstance(nxt.get("source"), dict):
+        want = nxt["source"].get("sha256")
+    got = o.get("replacement_downloaded_sha256")
+    if not isinstance(want, str) or not isinstance(got, str):
+        return "SOURCE_UNAVAILABLE"
+    return None if got == want else "INTEGRITY_MISMATCH"
+
+
 # Reference implementation of the execution preconditions of registry/plan-step-kinds.json:
-# id -> (function(step, kind rule, observed facts, registry), observed facts it reads).
+# id -> (function(step, kind rule, observed facts, env), observed facts it reads). env carries the
+# step-kind registry, the platform and the step that follows in the consented plan (next_step).
 STEP_PRECONDITIONS = {
-    "source_verified": (_pc_source_verified, {"downloaded_sha256"}),
+    "source_verified": (_pc_source_verified, {"downloaded_sha256", "staged_sha256"}),
     "ubuntu_supported": (_pc_ubuntu_supported, {"ubuntu_codename", "architecture"}),
     "target_user_current": (_pc_target_user_current, {"process_user"}),
     "distro_owned": (_pc_distro_owned, {"registered_distro"}),
     "wslconfig_unchanged": (_pc_wslconfig_unchanged, {"wslconfig_sha256"}),
-    "wsl_restart_confirmed": (_pc_wsl_restart_confirmed, {"sprut_drained", "wsl_restart_confirmed"}),
+    "wsl_restart_confirmed": (_pc_wsl_restart_confirmed, {"sprut_drained", "wsl_restart_confirmed",
+                                                          "registered_distributions", "running_distributions"}),
+    "sprut_drained": (_pc_sprut_drained, {"sprut_drained"}),
+    "replacement_source_verified": (_pc_replacement_source_verified, {"replacement_downloaded_sha256"}),
 }
 
 
@@ -1875,6 +2019,18 @@ def check_step_kinds(ctx: dict, report: Report) -> None:
             report.error(where, "title_without_source must be present exactly when source is optional (SEC-A1)")
         if entry.get("acknowledgement") != SPEC_ACKNOWLEDGEMENTS.get(kind):
             report.error(where, f"acknowledgement must be {SPEC_ACKNOWLEDGEMENTS.get(kind)}")
+        for platform, prule in entry["platforms"].items():
+            want = SPEC_PLATFORM_ACKNOWLEDGEMENTS.get((kind, platform))
+            if prule.get("acknowledgement") != want:
+                report.error(where, f"acknowledgement on {platform} must be {want}")
+            if "title" in prule:
+                check_localized(prule, "title", f"{where} on {platform}", report)
+                if any(_PLACEHOLDER.findall(prule["title"][lang]) for lang in ("ru", "en")):
+                    report.error(where, f"the {platform} title uses placeholders")
+                if "source" in optional:
+                    report.error(where, "a kind with title_without_source has no platform titles")
+            if want is not None and "title" not in prule:
+                report.error(where, f"the {platform} title must name the effect acknowledged as {want}")
         if entry["licence_required"] != (kind in SPEC_LICENCE_REQUIRED):
             report.error(where, f"licence_required must be {kind in SPEC_LICENCE_REQUIRED}")
         if entry["preconditions"] != SPEC_STEP_PRECONDITIONS.get(kind, []):
@@ -1885,6 +2041,53 @@ def check_step_kinds(ctx: dict, report: Report) -> None:
         for prefix in entry["source_url_prefixes"]:
             if not PREFIX_SHAPE.fullmatch(prefix):
                 report.error(where, f"source prefix {prefix!r} must match {PREFIX_SHAPE.pattern}")
+        # CR-58 / SEC-11: bare host names, only for kinds with a source, only the agreed ones.
+        redirect_hosts = entry.get("redirect_hosts")
+        if redirect_hosts is None:
+            report.error(where, "redirect_hosts is required (empty when a download must end on the requested host)")
+            redirect_hosts = entry["redirect_hosts"] = []
+        for host in redirect_hosts:
+            if not HOST_NAME.fullmatch(host):
+                report.error(where, f"redirect host {host!r} must be a bare lowercase host name "
+                                    "(no scheme, port, path, wildcard or IP address)")
+        if redirect_hosts and "source" not in members:
+            report.error(where, "redirect_hosts is only for kinds with a source")
+        if redirect_hosts != SPEC_REDIRECT_HOSTS.get(kind, []):
+            report.error(where, f"redirect_hosts must be {SPEC_REDIRECT_HOSTS.get(kind, [])} "
+                                "(a new host needs a security review and a change in tools/validate.py)")
+        # CR-49: a kind that stops the Sprut distribution runs only after a drain of Sprut tasks.
+        win_ops = [op["argv"] for op in entry["commands"].get("windows", []) if "argv" in op]
+        all_ops = [op["argv"] for ops in entry["commands"].values() for op in ops if "argv" in op]
+        stops = any((argv[0].lower().endswith("\\wsl.exe") and DISTRO_STOPPING_ARGS & set(argv[1:]))
+                    or argv[0].lower().endswith("\\msiexec.exe") for argv in win_ops)
+        # CR-72: stopping or restarting the engine stops every container, on either platform.
+        stops_engine = any(argv[0].rsplit("/", 1)[-1] == "systemctl" and ENGINE_UNITS & set(argv[1:])
+                           and (ENGINE_STOPPING_VERBS & set(argv[1:])
+                                or ({"disable", "mask"} & set(argv[1:]) and "--now" in argv))
+                           for argv in all_ops)
+        drains = any("sprut_drained" in catalog.get(pid, {}).get("reads", []) for pid in entry["preconditions"])
+        if stops and not drains:
+            report.error(where, "a kind that stops the Sprut distribution needs a precondition that reads sprut_drained (CR-49)")
+        if stops_engine and not drains:
+            report.error(where, "a kind that stops or restarts docker.service needs a precondition that reads sprut_drained (CR-72)")
+        if stops_engine and "linux" in entry["platforms"] and \
+                entry["platforms"]["linux"].get("acknowledgement", entry.get("acknowledgement")) != "engine_restart":
+            report.error(where, "a kind that stops or restarts docker.service on a Linux host needs the engine_restart "
+                                "acknowledgement (CR-72)")
+        # CR-71: apt-get update must report fetch failures through its exit status.
+        for argv in all_ops:
+            # CR-83: any apt-get call that updates, wherever `update` stands in it.
+            if argv[0].rsplit("/", 1)[-1] == "apt-get" and "update" in argv[1:] and argv != APT_UPDATE_ARGV:
+                report.error(where, f"apt-get update must be exactly {APT_UPDATE_ARGV} (CR-71)")
+        # CR-77: download limits exactly for kinds with a source.
+        limits = entry.get("download")
+        if (limits is not None) != ("source" in members):
+            report.error(where, "download limits must be present exactly when the kind requires or allows source")
+        elif limits is not None and (limits["max_bytes"], limits["timeout_seconds"]) != SPEC_DOWNLOAD_LIMITS.get(kind):
+            report.error(where, f"download limits must be {SPEC_DOWNLOAD_LIMITS.get(kind)} (max_bytes, timeout_seconds)")
+        for i, argv in enumerate(win_ops):
+            if "--resize" in argv and (i == 0 or win_ops[i - 1] != [argv[0], "--terminate", "{distro_name}"]):
+                report.error(where, "wsl --manage --resize must be preceded by wsl --terminate {distro_name} (CR-49)")
         if set(entry["commands"]) != set(entry["platforms"]):
             report.error(where, "commands must be given for exactly the kind's platforms")
         for platform, ops in entry["commands"].items():
@@ -1988,7 +2191,8 @@ def validate_plan(value, ctx: dict) -> dict:
             pulls.append(digest)
             pulled_refs.append(step["image"])
         # SEC-A1: without its optional source the title states that the download is unverified.
-        template = rule["title"] if "source" in step or "title_without_source" not in rule else rule["title_without_source"]
+        template = prule.get("title", rule["title"]) if "source" in step or "title_without_source" not in rule \
+            else rule["title_without_source"]
         for lang in ("ru", "en"):
             if step["title"][lang] != render_title(template[lang], step):
                 raise ContractError("TITLE_MISMATCH", f"{sid}: title.{lang} is not the template of {kind}")
@@ -2003,8 +2207,9 @@ def validate_plan(value, ctx: dict) -> dict:
             replaced, written = step["wslconfig_file"]["replaced"], step["wslconfig"]
             if not set(replaced) <= set(written) or (step["wslconfig_file"]["sha256"] == "absent" and replaced):
                 raise ContractError("WSLCONFIG_REPLACED_MISMATCH", f"{sid}: replaced values must be of written keys of an existing file")
-        if "acknowledgement" in rule and rule["acknowledgement"] not in acknowledgements:
-            acknowledgements.append(rule["acknowledgement"])
+        ack = prule.get("acknowledgement", rule.get("acknowledgement"))  # CR-72: per platform or per kind
+        if ack is not None and ack not in acknowledgements:
+            acknowledgements.append(ack)
         total += step["estimated_bytes"]
         if step["privileged"]:
             privileged.append(sid)
@@ -2029,19 +2234,21 @@ def validate_plan(value, ctx: dict) -> dict:
             "required_acknowledgements": acknowledgements}
 
 
-def evaluate_preconditions(step: dict, platform: str, observed: dict, ctx: dict):
-    """(allowed, reason_code, next_state, event) for the execution preconditions of a step."""
+def evaluate_preconditions(step: dict, platform: str, observed: dict, ctx: dict, next_step=None):
+    """(allowed, reason_code, next_state, event, failing precondition) for the execution
+    preconditions of a step; next_step is the step that follows it in the consented plan."""
     reg = ctx["step_registry"]
     rule = ctx["step_kinds"][step["kind"]]
     if platform not in rule["platforms"]:
         raise ContractError("STEP_NOT_ON_PLATFORM", f"{step['kind']} on {platform}")
     catalog = {p["id"]: p for p in reg["preconditions"]}
+    env = {"registry": reg, "platform": platform, "next_step": next_step}
     for pid in rule["preconditions"]:
-        reason = STEP_PRECONDITIONS[pid][0](step, rule, observed, reg)
+        reason = STEP_PRECONDITIONS[pid][0](step, rule, observed, env)
         if reason is not None:
             entry = catalog[pid]["on_reject"].get(reason, {})
-            return False, reason, entry.get("to"), entry.get("event")
-    return True, None, None, None
+            return False, reason, entry.get("to"), entry.get("event"), pid
+    return True, None, None, None, None
 
 
 def check_precondition_vectors(ctx: dict, report: Report) -> None:
@@ -2051,14 +2258,15 @@ def check_precondition_vectors(ctx: dict, report: Report) -> None:
         return
     if not validate_against(vec, "schemas/step-precondition-vector.schema.json", P_PRECONDITION_VECTORS, ctx, report):
         return
-    failed, rejections = set(), set()
+    failed, rejections, passed = set(), set(), set()
     for i, case in enumerate(vec["cases"]):
         where = f"cases[{i}] {case['name']}"
         if case["step"].get("kind") not in ctx["step_kinds"]:
             report.error(P_PRECONDITION_VECTORS, f"{where}: unknown step kind")
             continue
         try:
-            allowed, reason, nxt, event = evaluate_preconditions(case["step"], case["platform"], case["observed"], ctx)
+            allowed, reason, nxt, event, pid = evaluate_preconditions(
+                case["step"], case["platform"], case["observed"], ctx, case.get("next_step"))
         except (ContractError, KeyError, TypeError, AttributeError) as exc:
             report.error(P_PRECONDITION_VECTORS, f"{where}: {exc!r}")
             continue
@@ -2069,17 +2277,17 @@ def check_precondition_vectors(ctx: dict, report: Report) -> None:
             report.error(P_PRECONDITION_VECTORS, f"{where}: expected {want}, preconditions give {got}")
             continue
         if not allowed:
-            for pid in ctx["step_kinds"][case["step"]["kind"]]["preconditions"]:
-                if STEP_PRECONDITIONS[pid][0](case["step"], ctx["step_kinds"][case["step"]["kind"]],
-                                              case["observed"], ctx["step_registry"]) == reason:
-                    failed.add(pid)
-                    rejections.add((pid, reason))
-                    break
+            failed.add(pid)
+            rejections.add((pid, reason))
+        else:
+            passed.update(ctx["step_kinds"][case["step"]["kind"]]["preconditions"])
         report.ok()
     for p in ctx["step_registry"]["preconditions"]:
         for rc in p["fails_with"]:
             if (p["id"], rc) not in rejections:
                 report.error(P_PRECONDITION_VECTORS, f"no case where precondition {p['id']} fails with {rc}")
+        if p["id"] not in passed:
+            report.error(P_PRECONDITION_VECTORS, f"no allowed case for a step with precondition {p['id']}")
 
 
 def check_plan_vectors(ctx: dict, report: Report) -> None:
@@ -2337,6 +2545,521 @@ def check_wsl_resources(ctx: dict, report: Report) -> None:
             report.ok()
 
 
+# --------------------------------------------------------------------------
+# Step failures (CR-45), download redirects (CR-58 / SEC-11), run profiles (SEC-15)
+# --------------------------------------------------------------------------
+
+def expected_step_failures(rule: dict, platform: str) -> list:
+    """Reference: the failure classes of a step kind on a platform, derived from its command
+    templates (docs/installation-plan.md section 8). The last class is the catch-all."""
+    ops = rule["commands"][platform]
+    actions = {op.get("client_action") for op in ops}
+    apt = {op["argv"][1] for op in ops if "argv" in op and op["argv"][0] == "/usr/bin/apt-get" and len(op["argv"]) > 1}
+    if "engine_pull" in actions:
+        return ["source_unavailable", "engine_command_failed"]
+    out = []
+    if "download_source" in actions or "update" in apt:
+        out.append("source_unavailable")
+    if platform == "windows" and rule["platforms"]["windows"]["privileged"]:
+        # The elevated helper runs the step; it can also refuse the plan document it read (CR-73).
+        return out + ["plan_refused", "elevation_unavailable", "elevated_step_failed"]
+    if "download_source" in actions:  # the client stages the download and its verified copy itself
+        out += ["insufficient_disk", "local_storage_failed"]
+    if "install" in apt:
+        out.append("package_install_failed")
+    # On Windows every program and install_file of an unprivileged step goes through wsl.exe.
+    if platform == "windows" and any("argv" in op or "install_file" in op for op in ops):
+        out.append("wsl_command_failed")
+    return out + ["command_failed"]
+
+
+def failure_outcome(reg: dict, platform: str, case: dict):
+    """(reason_code, next_state, event) of a failure class for a step kind or a state, or None when
+    the class cannot occur there. Raises KeyError for an unknown kind, state or platform."""
+    table = reg["step_kinds"][case["step_kind"]] if "step_kind" in case else reg["states"][case["state"]]
+    if case["failure"] not in table[platform]:
+        return None
+    cls = next(c for c in reg["failure_classes"] if c["id"] == case["failure"])
+    return cls["reason_code"], cls["to"], cls["event"]
+
+
+_PROCESS_OUTCOMES = {"not_started", "timed_out", "exited"}
+# Command -> (where it occurs, the outcomes it can have).
+CLASSIFY_COMMANDS = {
+    "download_source": ("step", {"completed", "failed", "disk_full", "storage_failed"}),
+    "client_file": ("step", {"completed", "disk_full", "storage_failed"}),
+    "client_action": ("step", {"completed", "failed"}),
+    "apt_update": ("step", _PROCESS_OUTCOMES),
+    "apt_install": ("step", _PROCESS_OUTCOMES),
+    "program": ("step", _PROCESS_OUTCOMES),
+    "engine_pull": ("step", _PROCESS_OUTCOMES | {"request_error", "stream_error"}),
+    "engine": ("both", _PROCESS_OUTCOMES | {"request_error"}),
+    "engine_identity": ("state", _PROCESS_OUTCOMES | {"request_error", "completed"}),
+    "diagnostic": ("state", _PROCESS_OUTCOMES | {"request_error", "container_exited", "wait_timed_out"}),
+    "probe_output": ("state", _PROCESS_OUTCOMES),
+    "probe_exit_status": ("state", _PROCESS_OUTCOMES),
+    "host_query": ("state", {"completed", "failed"}),
+}
+
+
+def is_docker_desktop(engine: dict) -> bool:
+    """CW06: the engine identifies itself as Docker Desktop (info OperatingSystem, version Platform.Name)."""
+    return engine.get("operating_system") == DOCKER_DESKTOP or \
+        str(engine.get("platform_name", "")).startswith(DOCKER_DESKTOP)
+
+
+
+def classify_result(platform: str, in_state: bool, command: str, result: dict) -> str:
+    """Reference for docs/installation-plan.md section 8.2: the failure class chosen from the kind
+    of command and how it ended, or `ok`, `answer` (a probe that answers by its exit status) or
+    `evidence` (a probe with a complete, well-formed answer that is not the expected one)."""
+    outcome, status = result["outcome"], result.get("exit_status")
+    if command in ("download_source", "client_file", "client_action", "host_query"):  # no process of their own
+        if outcome == "completed":
+            return "ok"
+        if outcome in ("disk_full", "storage_failed"):  # the client's own files
+            return "insufficient_disk" if outcome == "disk_full" else "local_storage_failed"
+        return {"download_source": "source_unavailable", "client_action": "command_failed",
+                "host_query": "probe_failed"}[command]
+    if command == "engine_identity":
+        # CR-82: the identity is read before the is-active answer is used; Docker Desktop wins whatever it is.
+        inactive = result.get("service_active") is False
+        if outcome == "completed":
+            desktop = is_docker_desktop(result.get("engine", {}))
+            if desktop and inactive and not RULE_SWITCHES["docker_desktop_wins"]:
+                return "answer"
+            return "engine_docker_desktop" if desktop else "ok"
+        if inactive:
+            return "answer"  # the daemon is stopped: positive evidence, not a failure
+    exited = outcome == "exited"
+    # A Linux exit status is 0..255; through wsl.exe anything else is an error of wsl.exe itself (CR-70).
+    in_range = exited and (0 <= status <= 255 or not RULE_SWITCHES["wsl_exit_range"])
+    if command in ("engine", "engine_pull", "engine_identity", "diagnostic"):  # engine commands, whatever starts them (CR-75)
+        if command == "diagnostic" and outcome == "container_exited":
+            return "ok" if status == 0 else "smoke_test_failed"
+        if command == "diagnostic" and outcome == "wait_timed_out":
+            return "smoke_test_failed" if result.get("container") == "running" else "engine_command_failed"
+        if in_range and status == 0:
+            return "ok"
+        if command == "engine_pull" and (outcome == "stream_error" or (in_range and status != 0)):
+            return "source_unavailable"
+        return "engine_command_failed"
+    probe = command in ("probe_output", "probe_exit_status")
+    no_answer = ("wsl_command_failed" if platform == "windows" else "probe_failed") if probe else None
+    if not in_range:  # not started, timed out, or (Windows) an exit status outside 0..255
+        if platform == "windows":
+            return "wsl_command_failed"
+        return "probe_failed" if probe else "command_failed"
+    if command == "probe_exit_status":
+        return "answer"
+    if command == "probe_output":
+        if status == 0 and result.get("output") == "expected":
+            return "ok"
+        if status == 0 and result.get("output") == "unexpected":
+            return "evidence"
+        # A non-zero status or incomplete output is no answer and never evidence (CR-70).
+        return no_answer if RULE_SWITCHES["probe_failure_is_not_evidence"] else "evidence"
+    if status == 0:
+        return "ok"
+    return {"apt_update": "source_unavailable", "apt_install": "package_install_failed"}.get(command, "command_failed")
+
+
+def check_classification_vectors(reg: dict, kinds: dict, vec: dict, report: Report) -> None:
+    names, commands, verdicts = set(), set(), set()
+    for i, case in enumerate(vec["classification_cases"]):
+        where = f"classification_cases[{i}] {case['name']}"
+        if case["name"] in names:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: duplicate case name")
+        names.add(case["name"])
+        platform, command, result = case["platform"], case["command"], case["result"]
+        in_state = "state" in case
+        try:
+            listed = (reg["states"][case["state"]] if in_state else reg["step_kinds"][case["step_kind"]])[platform]
+        except KeyError as exc:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: unknown step kind, state or platform {exc}")
+            continue
+        if not in_state and platform == "windows" and kinds[case["step_kind"]]["platforms"]["windows"]["privileged"]:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: an elevated step is run by the helper, which reports its own outcome")
+            continue
+        occurs, outcomes = CLASSIFY_COMMANDS[command]
+        if occurs != "both" and (occurs == "state") != in_state:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: command {command} does not occur there")
+            continue
+        shape_ok = result["outcome"] in outcomes and \
+            (("exit_status" in result) == (result["outcome"] in ("exited", "container_exited"))) and \
+            (("engine" in result) == (command == "engine_identity" and result["outcome"] == "completed")) and \
+            (("container" in result) == (result["outcome"] == "wait_timed_out")) and \
+            ("output" not in result or (command == "probe_output" and result.get("exit_status") == 0)) and \
+            ("service_active" not in result or command == "engine_identity")
+        if not shape_ok:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: result {result} does not fit command {command}")
+            continue
+        got = classify_result(platform, in_state, command, result)
+        commands.add(command)
+        verdicts.add(got)
+        if got != case["expected"]:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: expected {case['expected']}, section 8.2 gives {got}")
+            continue
+        if got not in ("ok", "answer", "evidence") and got not in listed:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: class {got} is not listed for it in {P_STEP_FAILURES}")
+            continue
+        report.ok()
+    for command in sorted(set(CLASSIFY_COMMANDS) - commands):
+        report.error(P_STEP_FAILURE_VECTORS, f"no classification case for command {command}")
+    for verdict in ("ok", "answer", "evidence"):
+        if verdict not in verdicts:
+            report.error(P_STEP_FAILURE_VECTORS, f"no classification case with the result {verdict}")
+
+
+def check_step_failures(ctx: dict, report: Report) -> None:
+    name = P_STEP_FAILURES
+    reg = ctx["files"].get(name)
+    kinds = ctx.get("step_kinds")
+    bootstrap = ctx.get("machines", {}).get("bootstrap")
+    if reg is None or kinds is None or bootstrap is None:
+        report.error(name, "registry, step kinds or the bootstrap machine missing")
+        return
+    if not validate_against(reg, "schemas/step-failures.schema.json", name, ctx, report):
+        return
+    reason_codes = ctx.get("reason_codes", {})
+    classes = {}
+    for c in reg["failure_classes"]:
+        where = f"{name}: failure class {c['id']}"
+        if c["id"] in classes:
+            report.error(where, "duplicate failure class")
+        classes[c["id"]] = c
+        check_localized(c, "description", where, report)
+        if c["reason_code"] not in reason_codes:
+            report.error(where, f"unknown reason code {c['reason_code']}")
+    declared = {cid: (c["reason_code"], c["to"], c["event"]) for cid, c in classes.items()}
+    if declared != SPEC_FAILURE_CLASSES or list(classes) != list(SPEC_FAILURE_CLASSES):
+        report.error(name, f"failure classes and their outcomes must be exactly {SPEC_FAILURE_CLASSES} (CR-45)")
+        return
+    pairs = bootstrap["pairs"]
+
+    def check_list(where, platform, listed, from_states):
+        for cid in listed:
+            c = classes.get(cid)
+            if c is None:
+                report.error(where, f"unknown failure class {cid}")
+                continue
+            if platform not in reason_codes.get(c["reason_code"], {}).get("platforms", []):
+                report.error(where, f"{cid} gives {c['reason_code']}, which is not a {platform} code")
+            for f in from_states:
+                if (f, c["to"]) not in pairs:
+                    report.error(where, f"{cid} goes to {c['to']}, but {f}->{c['to']} is not a transition")
+
+    if set(reg["step_kinds"]) != set(kinds):
+        report.error(name, f"step_kinds must list exactly the step kinds: extra {sorted(set(reg['step_kinds']) - set(kinds))}, "
+                           f"missing {sorted(set(kinds) - set(reg['step_kinds']))}")
+    for kind, table in reg["step_kinds"].items():
+        rule = kinds.get(kind)
+        if rule is None:
+            continue
+        if set(table) != set(rule["platforms"]):
+            report.error(f"{name}: {kind}", "failure classes must be given for exactly the kind's platforms")
+            continue
+        for platform, listed in table.items():
+            where = f"{name}: {kind} on {platform}"
+            want = expected_step_failures(rule, platform)
+            if listed != want:
+                report.error(where, f"failure classes must be {want} (derived from the command templates), found {listed}")
+            if kind == "image_pull":
+                from_states = ["IMAGE_PULL"]
+            elif rule["platforms"][platform]["privileged"]:
+                from_states = ["INSTALLING", "WAITING_FOR_PRIVILEGE"]
+            else:
+                from_states = ["INSTALLING"]
+            check_list(where, platform, listed, from_states)
+    if reg["states"] != SPEC_STATE_FAILURES:
+        report.error(name, f"states must be exactly {SPEC_STATE_FAILURES}")
+    for state, table in reg["states"].items():
+        if state not in bootstrap["states"]:
+            report.error(name, f"{state} is not a bootstrap state")
+            continue
+        for platform, listed in table.items():
+            check_list(f"{name}: {state} on {platform}", platform, listed, [state])
+    report.ok()
+
+    vec = ctx["files"].get(P_STEP_FAILURE_VECTORS)
+    if vec is None:
+        report.error(P_STEP_FAILURE_VECTORS, "missing")
+        return
+    if not validate_against(vec, "schemas/step-failure-vector.schema.json", P_STEP_FAILURE_VECTORS, ctx, report):
+        return
+    covered, names, not_applicable = set(), set(), 0
+    for i, case in enumerate(vec["cases"]):
+        where = f"cases[{i}] {case['name']}"
+        if case["name"] in names:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: duplicate case name")
+        names.add(case["name"])
+        if case["failure"] not in classes:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: unknown failure class {case['failure']}")
+            continue
+        try:
+            got = failure_outcome(reg, case["platform"], case)
+        except KeyError as exc:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: unknown step kind, state or platform {exc}")
+            continue
+        want = (case["reason_code"], case["expected_next_state"], case["expected_event"]) \
+            if case["expected"] == "mapped" else None
+        if got != want:
+            report.error(P_STEP_FAILURE_VECTORS, f"{where}: expected {want or 'not_applicable'}, registry gives {got or 'not_applicable'}")
+            continue
+        if got is None:
+            not_applicable += 1
+        else:
+            covered.add((case.get("step_kind") or case["state"], case["platform"], case["failure"]))
+        report.ok()
+    for section in ("step_kinds", "states"):
+        for where_id, table in reg[section].items():
+            for platform, listed in table.items():
+                for cid in listed:
+                    if (where_id, platform, cid) not in covered:
+                        report.error(P_STEP_FAILURE_VECTORS, f"no mapped case for {cid} of {where_id} on {platform}")
+    if not not_applicable:
+        report.error(P_STEP_FAILURE_VECTORS, "needs a not_applicable case")
+    check_classification_vectors(reg, kinds, vec, report)
+
+
+def _hop_host(url: str):
+    """Host of an acceptable hop (https, no userinfo, no explicit port), lowercased; else None."""
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
+    https = parts.scheme == "https" or not RULE_SWITCHES["redirect_https_hops"]
+    if not https or "@" in parts.netloc or port is not None or not parts.hostname:
+        return None
+    return parts.hostname.lower()
+
+
+def download_allowed(rule: dict, requested_url: str, redirects: list, url_schema: dict, root: dict,
+                     response_bytes=None) -> bool:
+    """Reference for docs/installation-plan.md rule 10 (CR-58 / SEC-11, CR-77). `redirects` are the
+    Location targets in order, as absolute URLs; the last one is the final URL. response_bytes is
+    the length of the final response body, when the case gives it."""
+    prefixes = rule["source_url_prefixes"]
+    # The requested URL is step.source.url: the strict https_url form of the plan schema, under a prefix.
+    if RULE_SWITCHES["requested_url_strict"] and schema_errors(requested_url, url_schema, root):
+        return False
+    if not any(requested_url.startswith(p) for p in prefixes):
+        return False
+    requested_host = _hop_host(requested_url)
+    if requested_host is None or len(redirects) > MAX_REDIRECTS:
+        return False
+    hosts = [_hop_host(url) for url in redirects]
+    if None in hosts:
+        return False
+    final_url = redirects[-1] if redirects else requested_url
+    if not RULE_SWITCHES["redirect_prefix_on_requested_only"] and not any(final_url.startswith(p) for p in prefixes):
+        return False  # the 0.2.0 rule, kept only for --self-test
+    if RULE_SWITCHES["redirect_host_check"]:
+        # CR-77: every hop, not only the last one, stays on the requested host or a listed host.
+        allowed = {requested_host} | set(rule.get("redirect_hosts", []))
+        if any(host not in allowed for host in (hosts if RULE_SWITCHES["redirect_every_hop"] else hosts[-1:])):
+            return False
+    if response_bytes is not None and RULE_SWITCHES["download_size_cap"] \
+            and response_bytes > rule["download"]["max_bytes"]:
+        return False
+    return True
+
+
+def check_redirect_vectors(ctx: dict, report: Report) -> None:
+    vec = ctx["files"].get(P_REDIRECT_VECTORS)
+    kinds = ctx.get("step_kinds")
+    plan_schema = ctx["schemas"].get(P_PLAN_SCHEMA, {})
+    url_schema = plan_schema.get("$defs", {}).get("https_url")
+    if vec is None or kinds is None or url_schema is None:
+        report.error(P_REDIRECT_VECTORS, "vectors, step-kind registry or the https_url definition missing")
+        return
+    if not validate_against(vec, "schemas/download-redirect-vector.schema.json", P_REDIRECT_VECTORS, ctx, report):
+        return
+    names, verdicts, ended_on = set(), set(), set()
+    for i, case in enumerate(vec["cases"]):
+        where = f"cases[{i}] {case['name']}"
+        if case["name"] in names:
+            report.error(P_REDIRECT_VECTORS, f"{where}: duplicate case name")
+        names.add(case["name"])
+        rule = kinds.get(case["step_kind"])
+        if rule is None or not rule["source_url_prefixes"]:
+            report.error(P_REDIRECT_VECTORS, f"{where}: {case['step_kind']} is not a step kind with a source")
+            continue
+        got = download_allowed(rule, case["requested_url"], case["redirects"], url_schema, plan_schema,
+                               case.get("response_bytes"))
+        verdicts.add(got)
+        if got != (case["expected"] == "allowed"):
+            report.error(P_REDIRECT_VECTORS, f"{where}: expected {case['expected']}, the rule gives "
+                                             f"{'allowed' if got else 'refused'}")
+            continue
+        if got and case["redirects"]:
+            ended_on.add((case["step_kind"], _hop_host(case["redirects"][-1])))
+        report.ok()
+    if verdicts != {True, False}:
+        report.error(P_REDIRECT_VECTORS, "needs both allowed and refused cases")
+    sized = {c["expected"] for c in vec["cases"] if "response_bytes" in c}
+    if sized != {"allowed", "refused"}:
+        report.error(P_REDIRECT_VECTORS, "needs an allowed and a refused case with response_bytes (CR-77)")
+    hosts = {h for rule in kinds.values() for h in rule["redirect_hosts"]}
+    for host in sorted(hosts - {h for _, h in ended_on}):
+        report.error(P_REDIRECT_VECTORS, f"no allowed case that ends on the listed redirect host {host}")
+
+
+def _option_group_matches(group: list, options: list, at: int, params: dict, limits: dict) -> bool:
+    if len(options) - at < len(group):
+        return False
+    for token, got in zip(group, options[at:at + len(group)]):
+        placeholder = _PLACEHOLDER.fullmatch(token)
+        if placeholder is None:
+            if token != got:
+                return False
+        else:
+            pname = placeholder.group(1)
+            if pname in limits:
+                if got != limits[pname]:
+                    return False
+            elif pname not in params or not pattern_matches(params[pname], got):
+                return False
+    return True
+
+
+def run_conforms(reg: dict, profile_id: str, options: list, after_image=()) -> bool:
+    """Reference for docs/images-and-ownership.md section 5: every option group of the profile
+    exactly once, everything else from other_options, placeholders matching their parameters,
+    and nothing after the image reference (CR-76)."""
+    profile = next((p for p in reg["profiles"] if p["id"] == profile_id), None)
+    if profile is None or profile["status"] != "normative":
+        return False  # to_be_defined: no container of that purpose is run
+    if after_image and RULE_SWITCHES["run_profile_nothing_after_image"]:
+        return False
+    params = {p["name"]: p["pattern"] for p in reg["parameters"]}
+    limits = profile.get("limits", {})
+    required, other = profile["docker_run_options"], profile["other_options"]
+    seen = [0] * len(required)
+    at = 0
+    while at < len(options):
+        for index, group in enumerate(required):
+            if _option_group_matches(group, options, at, params, limits):
+                seen[index] += 1
+                at += len(group)
+                break
+        else:
+            for group in other:
+                if _option_group_matches(group, options, at, params, limits):
+                    at += len(group)
+                    break
+            else:
+                if RULE_SWITCHES["run_profile_closed"]:
+                    return False
+                at += 1
+    return all(n == 1 or (n > 1 and not RULE_SWITCHES["run_profile_exactly_once"]) for n in seen)
+
+
+def check_run_profiles(ctx: dict, report: Report) -> None:
+    name = P_RUN_PROFILES
+    reg = ctx["files"].get(name)
+    if reg is None:
+        report.error(name, "missing")
+        return
+    if not validate_against(reg, "schemas/run-profiles.schema.json", name, ctx, report):
+        return
+    params = {}
+    for p in reg["parameters"]:
+        pat = p["pattern"]
+        if p["name"] in params:
+            report.error(name, f"duplicate parameter {p['name']}")
+        params[p["name"]] = pat
+        if not (pat.startswith("^") and pat.endswith("$") and not pat.endswith("\\$")):
+            report.error(name, f"parameter {p['name']}: pattern {pat!r} must be anchored with ^...$")
+            return
+        try:
+            re.compile(pat)
+        except re.error as exc:
+            report.error(name, f"parameter {p['name']}: bad pattern {pat!r}: {exc}")
+            return
+    profiles = {}
+    for profile in reg["profiles"]:
+        where = f"{name}: profile {profile['id']}"
+        if profile["id"] in profiles:
+            report.error(where, "duplicate profile")
+        profiles[profile["id"]] = profile
+        check_localized(profile, "description", where, report)
+        used = set()
+        for group in profile.get("docker_run_options", []) + profile.get("other_options", []):
+            for token in group:
+                for pname in _PLACEHOLDER.findall(token):
+                    used.add(pname)
+                    if token != "{" + pname + "}" or pname not in params:
+                        report.error(where, f"placeholder {{{pname}}} must be a whole token naming a declared parameter")
+        limit_names = {t[1:-1] for g in profile.get("docker_run_options", []) for t in g if _PLACEHOLDER.fullmatch(t)}
+        limits = profile.get("limits")
+        if limits is not None:
+            if set(limits) != limit_names:
+                report.error(where, f"limits must fix exactly {sorted(limit_names)}")
+            for pname, value in limits.items():
+                if pname in params and not pattern_matches(params[pname], value):
+                    report.error(where, f"limit {pname}={value!r} does not match its parameter pattern")
+    if {pid: p["status"] for pid, p in profiles.items()} != SPEC_RUN_PROFILES:
+        report.error(name, f"profiles and their status must be {SPEC_RUN_PROFILES}: a new normative profile "
+                           "needs its own security review and a change in tools/validate.py (SEC-15)")
+        return
+    purposes = set(ctx["schemas"].get(P_ALLOWLIST_SCHEMA, {}).get("$defs", {}).get("entry", {})
+                   .get("properties", {}).get("purpose", {}).get("enum", []))
+    if purposes != set(profiles):
+        report.error(name, f"profile ids must equal the allowlist purposes {sorted(purposes)}")
+    diagnostic = profiles["diagnostic"]
+    for group in SPEC_DIAGNOSTIC_OPTIONS:
+        if group not in diagnostic["docker_run_options"]:
+            report.error(name, f"the diagnostic profile must contain {' '.join(group)} (SEC-15)")
+    if diagnostic["docker_run_options"] != SPEC_DIAGNOSTIC_OPTIONS:
+        report.error(name, f"the diagnostic options must be exactly {SPEC_DIAGNOSTIC_OPTIONS}")
+    if diagnostic["other_options"] != SPEC_DIAGNOSTIC_OTHER_OPTIONS:
+        report.error(name, f"the other options of the diagnostic profile must be exactly {SPEC_DIAGNOSTIC_OTHER_OPTIONS}")
+    if diagnostic["removal"] != "always":
+        report.error(name, "the diagnostic container is always removed")
+    # An image may be allowlisted only for a purpose whose run profile is defined, with fixed limits.
+    for entry in (ctx["files"].get(P_ALLOWLIST) or {}).get("entries", []):
+        profile = profiles.get(entry.get("purpose")) if isinstance(entry, dict) else None
+        if profile is None or profile["status"] != "normative" or "limits" not in profile:
+            report.error(P_ALLOWLIST, f"an image with purpose {entry.get('purpose') if isinstance(entry, dict) else entry!r} "
+                                      f"needs a normative run profile with fixed limits in {name} (SEC-15)")
+    report.ok()
+
+    vec = ctx["files"].get(P_RUN_PROFILE_VECTORS)
+    if vec is None:
+        report.error(P_RUN_PROFILE_VECTORS, "missing")
+        return
+    if not validate_against(vec, "schemas/run-profile-vector.schema.json", P_RUN_PROFILE_VECTORS, ctx, report):
+        return
+    names, verdicts = set(), set()
+    for i, case in enumerate(vec["cases"]):
+        where = f"cases[{i}] {case['name']}"
+        if case["name"] in names:
+            report.error(P_RUN_PROFILE_VECTORS, f"{where}: duplicate case name")
+        names.add(case["name"])
+        got = run_conforms(reg, case["profile"], case["options"], case.get("after_image", ()))
+        verdicts.add(got)
+        if got != (case["expected"] == "conforming"):
+            report.error(P_RUN_PROFILE_VECTORS, f"{where}: expected {case['expected']}, the profile gives "
+                                                f"{'conforming' if got else 'non_conforming'}")
+        else:
+            report.ok()
+    if verdicts != {True, False}:
+        report.error(P_RUN_PROFILE_VECTORS, "needs both conforming and non_conforming cases")
+    for pid, profile in profiles.items():
+        cases = [c for c in vec["cases"] if c["profile"] == pid]
+        if not cases:
+            report.error(P_RUN_PROFILE_VECTORS, f"no case for profile {pid}")
+        for group in profile.get("docker_run_options", []):
+            if not any(c["expected"] == "non_conforming" and group[0] not in c["options"] for c in cases):
+                report.error(P_RUN_PROFILE_VECTORS, f"no non_conforming case of {pid} without {group[0]}")
+            if not any(c["expected"] == "non_conforming" and c["options"].count(group[0]) > 1 for c in cases):
+                report.error(P_RUN_PROFILE_VECTORS, f"no non_conforming case of {pid} with {group[0]} repeated (CR-76)")
+        if profile["status"] == "normative" and not any(c.get("after_image") for c in cases):
+            report.error(P_RUN_PROFILE_VECTORS, f"no case of {pid} with arguments after the image reference (CR-76)")
+
+
 def run_checks(ctx: dict, report: Report) -> None:
     check_version(ctx, report)
     check_schemas(ctx, report)
@@ -2356,6 +3079,9 @@ def run_checks(ctx: dict, report: Report) -> None:
     check_allowlist(ctx, report)
     check_ownership(ctx, report)
     check_wsl_resources(ctx, report)
+    check_step_failures(ctx, report)
+    check_redirect_vectors(ctx, report)
+    check_run_profiles(ctx, report)
 
 
 # --------------------------------------------------------------------------
@@ -2691,7 +3417,10 @@ def _swap_precondition(pid, fn):
     return apply
 
 
-def _restart_without_drain(step, rule, o, reg):
+def _restart_without_drain(step, rule, o, env):
+    lists = ("running_distributions",) if rule["kind"] == "restart_wsl" else ("registered_distributions",)
+    if not all(_name_list(o.get(name)) for name in lists):
+        return "WSL_RESTART_REQUIRED"
     return None if o.get("wsl_restart_confirmed") is True else "WSL_RESTART_REQUIRED"
 
 
@@ -2778,6 +3507,318 @@ def _prerelease_equals_release(ctx):
 
 def _object_hash_array_as_kind(ctx):
     ctx["files"][D_CANONICAL_INVALID + "reject-object-hash-of-array.json"]["expected_error"] = "INVALID_KIND"
+
+
+# --- sprut-contracts 0.3.0 ---
+
+def _drop_reason_code(code):
+    def apply(ctx):
+        reg = ctx["files"][P_REASON_CODES]
+        reg["reason_codes"] = [c for c in reg["reason_codes"] if c["code"] != code]
+    return apply
+
+
+def _wsl_state(ctx, name):
+    return next(s for s in _machine(ctx, "wsl_availability")["states"] if s["name"] == name)
+
+
+def _policy_blocked_not_terminal(ctx):
+    m = _machine(ctx, "wsl_availability")
+    m["terminal"].remove("WSL_POLICY_BLOCKED")
+    m["transitions"].append({"from": "WSL_POLICY_BLOCKED", "to": "WSL_MISSING"})
+
+
+def _policy_blocked_without_reason(ctx):
+    _wsl_state(ctx, "WSL_POLICY_BLOCKED").pop("reason_code")
+
+
+def _policy_blocked_removed(ctx):
+    m = _machine(ctx, "wsl_availability")
+    m["states"] = [s for s in m["states"] if s["name"] != "WSL_POLICY_BLOCKED"]
+    m["terminal"].remove("WSL_POLICY_BLOCKED")
+
+
+def _failure_class(ctx, cid):
+    return next(c for c in ctx["files"][P_STEP_FAILURES]["failure_classes"] if c["id"] == cid)
+
+
+def _wsl_failure_as_broken_distro(ctx):
+    _failure_class(ctx, "wsl_command_failed")["reason_code"] = "WSL_DISTRO_BROKEN"
+
+
+def _elevation_unavailable_to_failed(ctx):
+    _failure_class(ctx, "elevation_unavailable")["to"] = "FAILED"
+
+
+def _apt_install_as_source_failure(ctx):
+    ctx["files"][P_STEP_FAILURES]["step_kinds"]["install_docker_engine"]["windows"] = \
+        ["source_unavailable", "wsl_command_failed", "command_failed"]
+
+
+def _elevated_step_as_step_failed(ctx):
+    ctx["files"][P_STEP_FAILURES]["step_kinds"]["update_wsl"]["windows"] = ["source_unavailable", "command_failed"]
+
+
+def _probe_failure_class_dropped(ctx):
+    ctx["files"][P_STEP_FAILURES]["states"]["PROBING"]["windows"] = ["engine_command_failed"]
+
+
+def _smoke_engine_failure_dropped(ctx):
+    ctx["files"][P_STEP_FAILURES]["states"]["SMOKE_TEST"]["linux"] = ["smoke_test_failed"]
+
+
+def _step_failure_vector_changed(ctx):
+    for case in ctx["files"][P_STEP_FAILURE_VECTORS]["cases"]:
+        if case["name"] == "windows-start-engine-command-failed":
+            case["reason_code"] = "ENGINE_DAEMON_STOPPED"
+
+
+def _failure_kind_missing(ctx):
+    ctx["files"][P_STEP_FAILURES]["step_kinds"].pop("restart_wsl")
+
+
+def _unregister_without_replacement(ctx):
+    _step_kind(ctx, "unregister_distro")["preconditions"] = ["distro_owned", "sprut_drained"]
+
+
+def _replacement_never_checked(step, rule, o, env):
+    return None
+
+
+def _replacement_by_presence_only(step, rule, o, env):
+    return None if isinstance(o.get("replacement_downloaded_sha256"), str) else "SOURCE_UNAVAILABLE"
+
+
+def _replacement_reject_to_probing(ctx):
+    for p in ctx["files"][P_STEP_KINDS]["preconditions"]:
+        if p["id"] == "replacement_source_verified":
+            p["on_reject"]["SOURCE_UNAVAILABLE"] = {"to": "PROBING", "event": "state"}
+
+
+def _wsl_update_without_confirmation(ctx):
+    _step_kind(ctx, "update_wsl")["preconditions"] = ["source_verified"]
+
+
+def _wsl_install_without_confirmation(ctx):
+    _step_kind(ctx, "install_wsl")["preconditions"] = ["source_verified"]
+
+
+def _unreadable_list_is_empty(step, rule, o, env):
+    if rule["kind"] != "restart_wsl" and not (o.get("registered_distributions") or []):
+        return None
+    ok = o.get("sprut_drained") is True and o.get("wsl_restart_confirmed") is True
+    return None if ok else "WSL_RESTART_REQUIRED"
+
+
+def _update_always_without_dialog(step, rule, o, env):
+    if rule["kind"] != "restart_wsl":
+        return None if _name_list(o.get("registered_distributions")) else "WSL_RESTART_REQUIRED"
+    return _PRECONDITION_WSL_RESTART(step, rule, o, env)
+
+
+def _resize_without_terminate(ctx):
+    ops = _step_kind(ctx, "resize_distro_disk")["commands"]["windows"]
+    ops[:] = [op for op in ops if "--terminate" not in op.get("argv", [])]
+
+
+def _resize_without_drain(ctx):
+    _step_kind(ctx, "resize_distro_disk")["preconditions"] = []
+
+
+def _configure_without_drain(ctx):
+    _step_kind(ctx, "configure_distro")["preconditions"] = []
+
+
+def _drain_never_checked(step, rule, o, env):
+    return None
+
+
+def _redirect_host_with_scheme(ctx):
+    schema = ctx["files"]["schemas/plan-step-kinds.schema.json"]
+    schema["$defs"]["step_kind"]["properties"]["redirect_hosts"]["items"].pop("pattern")
+    _step_kind(ctx, "install_wsl")["redirect_hosts"][0] = "https://objects.githubusercontent.com"
+
+
+def _redirect_host_wildcard(ctx):
+    schema = ctx["files"]["schemas/plan-step-kinds.schema.json"]
+    schema["$defs"]["step_kind"]["properties"]["redirect_hosts"]["items"].pop("pattern")
+    _step_kind(ctx, "install_wsl")["redirect_hosts"][0] = "*.githubusercontent.com"
+
+
+def _redirect_host_added(ctx):
+    _step_kind(ctx, "import_distro")["redirect_hosts"].append("mirror.example.net")
+
+
+def _redirect_hosts_optional(ctx):
+    ctx["files"]["schemas/plan-step-kinds.schema.json"]["$defs"]["step_kind"]["required"].remove("redirect_hosts")
+    _step_kind(ctx, "install_wsl").pop("redirect_hosts")
+
+
+def _client_hash_not_required(step, rule, o, env):
+    if "source" not in step:
+        return None if "source" in rule["optional_members"] else "INTEGRITY_MISMATCH"
+    return None if o.get("downloaded_sha256") == step["source"]["sha256"] else "INTEGRITY_MISMATCH"
+
+
+def _client_hash_only(step, rule, o, env):
+    if "source" not in step:
+        return None if "source" in rule["optional_members"] else "INTEGRITY_MISMATCH"
+    key = "staged_sha256" if verified_in_distro(rule, env["platform"]) else "downloaded_sha256"
+    return None if o.get(key) == step["source"]["sha256"] else "INTEGRITY_MISMATCH"
+
+
+def _run_profile(ctx, pid):
+    return next(p for p in ctx["files"][P_RUN_PROFILES]["profiles"] if p["id"] == pid)
+
+
+def _diagnostic_drop_group(first):
+    def apply(ctx):
+        profile = _run_profile(ctx, "diagnostic")
+        profile["docker_run_options"] = [g for g in profile["docker_run_options"] if g[0] != first]
+    return apply
+
+
+def _diagnostic_not_removed(ctx):
+    ctx["files"]["schemas/run-profiles.schema.json"]["$defs"]["profile"]["properties"]["removal"]["enum"].append("on_success")
+    _run_profile(ctx, "diagnostic")["removal"] = "on_success"
+
+
+def _diagnostic_allows_privileged(ctx):
+    _run_profile(ctx, "diagnostic")["other_options"].append(["--privileged"])
+
+
+def _worker_profile_without_review(ctx):
+    worker = _run_profile(ctx, "worker")
+    diagnostic = _run_profile(ctx, "diagnostic")
+    worker.update({"status": "normative", "docker_run_options": copy.deepcopy(diagnostic["docker_run_options"]),
+                   "other_options": copy.deepcopy(diagnostic["other_options"]), "removal": "always"})
+
+
+def _allowlist_entry_without_run_profile(ctx):
+    ctx["codeowners"] = True
+    ctx["files"][P_ALLOWLIST]["entries"].append(
+        {"repository": "ghcr.io/alexindacomp/sprut-worker", "digest": "sha256:" + "1" * 64, "purpose": "worker",
+         "platform": "linux/amd64", "min_client_version": "0.3.0"})
+
+
+# --- rework round 1 (CR-70 ... CR-81) ---
+
+def _download_limits_removed(ctx):
+    ctx["files"]["schemas/plan-step-kinds.schema.json"]["$defs"]["step_kind"]["properties"].pop("download")
+    _step_kind(ctx, "import_distro").pop("download")
+
+
+def _download_cap_raised(ctx):
+    _step_kind(ctx, "apt_add_docker_repo")["download"]["max_bytes"] = 1073741824
+
+
+def _apt_update_default_error_mode(ctx):
+    for platform in ("windows", "linux"):
+        for op in _step_kind(ctx, "apt_add_docker_repo")["commands"][platform]:
+            if op.get("argv", [])[:2] == ["/usr/bin/apt-get", "update"]:
+                op["argv"] = ["/usr/bin/apt-get", "update"]
+
+
+def _nvidia_without_drain(ctx):
+    _step_kind(ctx, "install_nvidia_toolkit")["preconditions"] = ["ubuntu_supported", "source_verified"]
+
+
+def _nvidia_linux_without_acknowledgement(ctx):
+    _step_kind(ctx, "install_nvidia_toolkit")["platforms"]["linux"].pop("acknowledgement")
+
+
+def _nvidia_linux_without_its_title(ctx):
+    _step_kind(ctx, "install_nvidia_toolkit")["platforms"]["linux"].pop("title")
+
+
+def _engine_stop_without_drain(ctx):
+    for platform in ("windows", "linux"):
+        _step_kind(ctx, "start_engine")["commands"][platform].insert(
+            0, {"argv": ["/usr/bin/systemctl", "stop", "docker.service"]})
+
+
+def _wsl_title_without_disclosure(ctx):
+    _step_kind(ctx, "update_wsl")["title"] = {"ru": "Обновить WSL", "en": "Update WSL"}
+
+
+def _resize_title_without_disclosure(ctx):
+    _step_kind(ctx, "resize_distro_disk")["title"]["en"] = "Change the maximum disk size of the Sprut distribution"
+
+
+def _helper_refusal_without_class(ctx):
+    for kind in ("enable_wsl_features", "enable_vm_platform", "install_wsl", "update_wsl"):
+        classes = ctx["files"][P_STEP_FAILURES]["step_kinds"][kind]["windows"]
+        classes.remove("plan_refused")
+
+
+def _probe_catch_all_dropped(ctx):
+    for state in ctx["files"][P_STEP_FAILURES]["states"].values():
+        for classes in state.values():
+            classes.remove("probe_failed")
+
+
+def _probe_failure_as_step_failed(ctx):
+    _failure_class(ctx, "probe_failed")["reason_code"] = "STEP_FAILED"
+
+
+def _plan_ack_dropped_for_engine_restart(ctx):
+    _plan_vector(ctx, "linux-nvidia-toolkit")["derived"]["required_acknowledgements"] = []
+
+
+def _apt_update_with_leading_option(ctx):
+    for op in _step_kind(ctx, "install_nvidia_toolkit")["commands"]["linux"]:
+        if "update" in op.get("argv", []):
+            op["argv"] = ["/usr/bin/apt-get", "-q", "update"]
+
+
+def _engine_try_restart_without_drain(ctx):
+    for platform in ("windows", "linux"):
+        _step_kind(ctx, "start_engine")["commands"][platform].insert(
+            0, {"argv": ["/usr/bin/systemctl", "try-restart", "docker"]})
+
+
+def _engine_socket_killed_without_drain(ctx):
+    _step_kind(ctx, "install_docker_engine")["commands"]["linux"].append(
+        {"argv": ["/usr/bin/systemctl", "kill", "docker.socket"]})
+
+
+def _engine_disabled_now_without_drain(ctx):
+    _step_kind(ctx, "start_engine")["commands"]["linux"].append(
+        {"argv": ["/usr/bin/systemctl", "disable", "--now", "docker.service"]})
+
+
+def _storage_failure_as_insufficient_disk(ctx):
+    _failure_class(ctx, "local_storage_failed")["reason_code"] = "INSUFFICIENT_DISK"
+
+
+def _storage_failure_to_failed(ctx):
+    _failure_class(ctx, "local_storage_failed")["to"] = "FAILED"
+
+
+def _storage_class_dropped(ctx):
+    ctx["files"][P_STEP_FAILURES]["step_kinds"]["import_distro"]["windows"] = \
+        ["source_unavailable", "wsl_command_failed", "command_failed"]
+
+
+def _docker_desktop_as_remote_context(ctx):
+    _failure_class(ctx, "engine_docker_desktop")["reason_code"] = "ENGINE_REMOTE_CONTEXT"
+
+
+def _docker_desktop_not_rechecked(ctx):
+    for classes in ctx["files"][P_STEP_FAILURES]["states"]["SMOKE_TEST"].values():
+        classes.remove("engine_docker_desktop")
+
+
+def _docker_desktop_by_operating_system_only(ctx):
+    global is_docker_desktop
+    is_docker_desktop = lambda engine: engine.get("operating_system") == DOCKER_DESKTOP  # noqa: E731
+
+
+def _allowlist_diagnostic_without_limits(ctx):
+    ctx["codeowners"] = True
+    ctx["files"][P_ALLOWLIST]["entries"].append(
+        {"repository": "ghcr.io/alexindacomp/sprut-diagnostic", "digest": "sha256:" + "2" * 64, "purpose": "diagnostic",
+         "platform": "linux/amd64", "min_client_version": "0.3.0"})
 
 
 SELF_TEST_MUTATIONS = [
@@ -2925,16 +3966,120 @@ SELF_TEST_MUTATIONS = [
     ("apt-get started through /usr/bin/env (SEC-N4)", _env_launcher, "all"),
     ("unrepresentable .wslconfig value accepted as replaced (CR-29)", _wsl_display_too_wide, "all"),
     ("ownership: adoption without journal", _switch_off("adoption_needs_journal"), "all"),
+    # sprut-contracts 0.3.0. CR-45: reason codes, WSL_POLICY_BLOCKED state, step failures
+    ("reason codes: STEP_FAILED removed", _drop_reason_code("STEP_FAILED"), "all"),
+    ("reason codes: WSL_COMMAND_FAILED removed", _drop_reason_code("WSL_COMMAND_FAILED"), "all"),
+    ("reason codes: ELEVATION_UNAVAILABLE removed", _drop_reason_code("ELEVATION_UNAVAILABLE"), "all"),
+    _add_edge("wsl_availability", "WSL_POLICY_BLOCKED", "WSL2_READY"),
+    ("wsl_availability: WSL_POLICY_BLOCKED not terminal", _policy_blocked_not_terminal, "machines"),
+    ("wsl_availability: WSL_POLICY_BLOCKED without its reason code", _policy_blocked_without_reason, "machines"),
+    ("wsl_availability: WSL_POLICY_BLOCKED state removed", _policy_blocked_removed, "machines"),
+    ("step failures: a command that could not run reported as WSL_DISTRO_BROKEN", _wsl_failure_as_broken_distro, "all"),
+    ("step failures: missing helper leads to FAILED instead of ACTION_REQUIRED", _elevation_unavailable_to_failed, "all"),
+    ("step failures: apt-get install failure reported as SOURCE_UNAVAILABLE", _apt_install_as_source_failure, "all"),
+    ("step failures: elevated step reported as STEP_FAILED", _elevated_step_as_step_failed, "all"),
+    ("step failures: probe command failure has no class", _probe_failure_class_dropped, "all"),
+    ("step failures: engine failure in SMOKE_TEST has no class", _smoke_engine_failure_dropped, "all"),
+    ("step failures: vector expects ENGINE_DAEMON_STOPPED for start_engine", _step_failure_vector_changed, "all"),
+    ("step failures: a step kind without failure classes", _failure_kind_missing, "all"),
+    # SEC-1: replacement source verified before unregister_distro
+    ("step kinds: unregister_distro without replacement_source_verified", _unregister_without_replacement, "all"),
+    ("precondition: replacement source never checked", _swap_precondition("replacement_source_verified", _replacement_never_checked), "all"),
+    ("precondition: replacement source present but its hash not compared",
+     _swap_precondition("replacement_source_verified", _replacement_by_presence_only), "all"),
+    ("precondition: missing replacement leads to PROBING instead of FAILED", _replacement_reject_to_probing, "all"),
+    # SEC-5: install_wsl / update_wsl confirmed like restart_wsl
+    ("step kinds: update_wsl without the restart confirmation", _wsl_update_without_confirmation, "all"),
+    ("step kinds: install_wsl without the restart confirmation", _wsl_install_without_confirmation, "all"),
+    ("precondition: unreadable distribution list treated as empty",
+     _swap_precondition("wsl_restart_confirmed", _unreadable_list_is_empty), "all"),
+    ("precondition: install/update never asks when distributions are registered",
+     _swap_precondition("wsl_restart_confirmed", _update_always_without_dialog), "all"),
+    # CR-49: terminate before resize, drain before the Sprut distribution is stopped
+    ("step kinds: resize without wsl --terminate", _resize_without_terminate, "all"),
+    ("step kinds: resize_distro_disk without drain", _resize_without_drain, "all"),
+    ("step kinds: configure_distro without drain", _configure_without_drain, "all"),
+    ("precondition: drain never checked", _swap_precondition("sprut_drained", _drain_never_checked), "all"),
+    # CR-58 / SEC-11: redirects
+    ("step kinds: redirect host with a scheme, schema pattern removed", _redirect_host_with_scheme, "all"),
+    ("step kinds: wildcard redirect host, schema pattern removed", _redirect_host_wildcard, "all"),
+    ("step kinds: unreviewed redirect host added", _redirect_host_added, "all"),
+    ("step kinds: redirect_hosts optional and absent", _redirect_hosts_optional, "all"),
+    ("download: redirect hosts not checked", _switch_off("redirect_host_check"), "all"),
+    ("download: only the final hop restricted (CR-77)", _switch_off("redirect_every_hop"), "all"),
+    ("download: requested URL not in the strict form (CR-77)", _switch_off("requested_url_strict"), "all"),
+    ("download: no size cap (CR-77)", _switch_off("download_size_cap"), "all"),
+    ("step kinds: download limits removed (CR-77)", _download_limits_removed, "all"),
+    ("step kinds: download cap raised without review (CR-77)", _download_cap_raised, "all"),
+    ("download: http hop accepted", _switch_off("redirect_https_hops"), "all"),
+    ("download: prefix check on the final URL (0.2.0 rule)", _switch_off("redirect_prefix_on_requested_only"), "all"),
+    # SEC-12: both hashes for in-distribution copies
+    ("precondition: client hash not required for in-distribution copies",
+     _swap_precondition("source_verified", _client_hash_not_required), "all"),
+    ("precondition: distribution hash ignored when the client hash matches",
+     _swap_precondition("source_verified", _client_hash_only), "all"),
+    # SEC-15: run profiles
+    ("run profiles: diagnostic without --network none", _diagnostic_drop_group("--network"), "all"),
+    ("run profiles: diagnostic without --cap-drop ALL", _diagnostic_drop_group("--cap-drop"), "all"),
+    ("run profiles: diagnostic without --pull=never", _diagnostic_drop_group("--pull=never"), "all"),
+    ("run profiles: diagnostic without --read-only", _diagnostic_drop_group("--read-only"), "all"),
+    ("run profiles: diagnostic without no-new-privileges", _diagnostic_drop_group("--security-opt"), "all"),
+    ("run profiles: diagnostic without --pids-limit", _diagnostic_drop_group("--pids-limit"), "all"),
+    ("run profiles: diagnostic without --memory", _diagnostic_drop_group("--memory"), "all"),
+    ("run profiles: diagnostic container not always removed", _diagnostic_not_removed, "all"),
+    ("run profiles: diagnostic may run privileged", _diagnostic_allows_privileged, "all"),
+    ("run profiles: option set not closed", _switch_off("run_profile_closed"), "all"),
+    ("run profiles: worker profile defined without review", _worker_profile_without_review, "all"),
+    ("allowlist: worker image without a defined run profile", _allowlist_entry_without_run_profile, "all"),
+    ("allowlist: diagnostic image before its limits are fixed", _allowlist_diagnostic_without_limits, "all"),
+    # rework round 1. CR-70: mechanical classification
+    ("classification: exit status outside 0-255 through wsl.exe treated as a program result", _switch_off("wsl_exit_range"), "all"),
+    ("classification: a probe that gave no answer counted as evidence", _switch_off("probe_failure_is_not_evidence"), "all"),
+    # CR-71: apt
+    ("step kinds: apt-get update without Error-Mode=any", _apt_update_default_error_mode, "all"),
+    # CR-72: engine restart
+    ("step kinds: install_nvidia_toolkit without drain", _nvidia_without_drain, "all"),
+    ("step kinds: install_nvidia_toolkit on Linux without the engine_restart acknowledgement", _nvidia_linux_without_acknowledgement, "all"),
+    ("step kinds: install_nvidia_toolkit on Linux without its own title", _nvidia_linux_without_its_title, "all"),
+    ("step kinds: systemctl stop docker.service added without drain", _engine_stop_without_drain, "all"),
+    ("plan vector: engine_restart acknowledgement not derived", _plan_ack_dropped_for_engine_restart, "all"),
+    # CR-73, CR-74: classes
+    ("step failures: plan refused by the helper has no class", _helper_refusal_without_class, "all"),
+    ("step failures: checks outside steps have no catch-all", _probe_catch_all_dropped, "all"),
+    ("step failures: a failed check reported as STEP_FAILED", _probe_failure_as_step_failed, "all"),
+    # LOCAL_STORAGE_FAILED, ENGINE_DOCKER_DESKTOP
+    ("reason codes: LOCAL_STORAGE_FAILED removed", _drop_reason_code("LOCAL_STORAGE_FAILED"), "all"),
+    ("reason codes: ENGINE_DOCKER_DESKTOP removed", _drop_reason_code("ENGINE_DOCKER_DESKTOP"), "all"),
+    ("step failures: a storage failure reported as INSUFFICIENT_DISK", _storage_failure_as_insufficient_disk, "all"),
+    ("step failures: a storage failure leads to FAILED instead of ACTION_REQUIRED", _storage_failure_to_failed, "all"),
+    ("step failures: import_distro without the storage classes", _storage_class_dropped, "all"),
+    ("step failures: Docker Desktop reported as ENGINE_REMOTE_CONTEXT", _docker_desktop_as_remote_context, "all"),
+    ("step failures: Docker Desktop not re-checked before the container run", _docker_desktop_not_rechecked, "all"),
+    ("classification: Docker Desktop recognised by OperatingSystem only", _docker_desktop_by_operating_system_only, "all"),
+    # final round: CR-82, CR-83
+    ("classification: Docker Desktop ignored when docker.service is inactive (CR-82)", _switch_off("docker_desktop_wins"), "all"),
+    ("step kinds: apt-get -q update without Error-Mode=any (CR-83)", _apt_update_with_leading_option, "all"),
+    ("step kinds: systemctl try-restart docker without drain (CR-83)", _engine_try_restart_without_drain, "all"),
+    ("step kinds: systemctl kill docker.socket without drain (CR-83)", _engine_socket_killed_without_drain, "all"),
+    ("step kinds: systemctl disable --now docker.service without drain (CR-83)", _engine_disabled_now_without_drain, "all"),
+    # CR-76: run profile
+    ("run profiles: an option group may repeat", _switch_off("run_profile_exactly_once"), "all"),
+    ("run profiles: arguments after the image accepted", _switch_off("run_profile_nothing_after_image"), "all"),
+    # CR-80: titles
+    ("step kinds: update_wsl title without the stop disclosure", _wsl_title_without_disclosure, "all"),
+    ("step kinds: resize title without the stop disclosure", _resize_title_without_disclosure, "all"),
 ]
 
 
 _PREDICATES_DEFAULT = dict(PREDICATES)
 _STEP_PRECONDITIONS_DEFAULT = dict(STEP_PRECONDITIONS)
+_PRECONDITION_WSL_RESTART = _pc_wsl_restart_confirmed
+_IS_DOCKER_DESKTOP_DEFAULT = is_docker_desktop
 _SEMVER_DEFAULT = _semver
 
 
 def self_test(base: dict) -> int:
-    global SORT_KEY, _semver
+    global SORT_KEY, _semver, is_docker_desktop
     report = Report()
     run_checks(copy.deepcopy(base), report)
     if report.errors:
@@ -2964,6 +4109,7 @@ def self_test(base: dict) -> int:
             PREDICATES.update(_PREDICATES_DEFAULT)
             STEP_PRECONDITIONS.update(_STEP_PRECONDITIONS_DEFAULT)
             _semver = _SEMVER_DEFAULT
+            is_docker_desktop = _IS_DOCKER_DESKTOP_DEFAULT
         if r.errors:
             print(f"ok    {label}  ->  {r.errors[0].splitlines()[0]}")
         else:

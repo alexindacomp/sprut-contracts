@@ -48,8 +48,8 @@
         "id": "resize-distro-disk",
         "kind": "resize_distro_disk",
         "title": {
-          "ru": "Изменить максимальный размер диска дистрибутива Sprut",
-          "en": "Change the maximum disk size of the Sprut distribution"
+          "ru": "Изменить максимальный размер диска дистрибутива Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+          "en": "Change the maximum disk size of the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
         },
         "privileged": false,
         "requires_reboot": false,
@@ -77,7 +77,7 @@
     ],
     "licences": [],
     "disk_estimate_bytes": 0,
-    "hash": "40d8278edea52cf1041fea92d6bc8a283ade72da4dd27759846cc22f217756ae"
+    "hash": "728d1b2450caf8ad11bb45cf95ae4ca25276cb0e836cbdf978135f55877ba802"
   },
   "expected": "invalid",
   "expected_error": "SCHEMA_VIOLATION"

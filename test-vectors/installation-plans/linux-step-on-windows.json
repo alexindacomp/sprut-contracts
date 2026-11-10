@@ -48,8 +48,8 @@
         "id": "install-wsl",
         "kind": "install_wsl",
         "title": {
-          "ru": "Установить WSL из официального источника",
-          "en": "Install WSL from the official source"
+          "ru": "Установить WSL из официального источника (запущенные дистрибутивы WSL могут быть остановлены)",
+          "en": "Install WSL from the official source (running WSL distributions may be stopped)"
         },
         "privileged": true,
         "requires_reboot": false,
@@ -85,8 +85,8 @@
         "id": "configure-distro",
         "kind": "configure_distro",
         "title": {
-          "ru": "Включить systemd в дистрибутиве Sprut",
-          "en": "Enable systemd in the Sprut distribution"
+          "ru": "Включить systemd в дистрибутиве Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+          "en": "Enable systemd in the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
         },
         "privileged": false,
         "requires_reboot": false,
@@ -197,7 +197,7 @@
       }
     ],
     "disk_estimate_bytes": 5200004096,
-    "hash": "ec7de20a826d2bc60026ed4e5e566fb5895d73fb82fec4632d8ad5ba15d17db2"
+    "hash": "a0920644bad877340a891089df140ca0a6c954eae061f4c515ca9e3b68753989"
   },
   "expected": "invalid",
   "expected_error": "STEP_NOT_ON_PLATFORM"

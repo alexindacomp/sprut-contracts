@@ -39,7 +39,7 @@
         },
         "required_acknowledgements": {
           "description": "Acknowledgements of the plan's step kinds, without duplicates, in step order: guard input required_acknowledgements.",
-          "type": "array", "items": {"enum": ["docker_group", "distro_removal"]}
+          "type": "array", "items": {"enum": ["docker_group", "distro_removal", "engine_restart"]}
         },
         "windows_elevated_steps": {
           "description": "For each privileged step of a windows plan, in step order: the step id and the elevated-helper operation. Empty for linux plans.",

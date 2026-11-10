@@ -48,8 +48,8 @@
         "id": "install-wsl",
         "kind": "install_wsl",
         "title": {
-          "ru": "Установить WSL из официального источника",
-          "en": "Install WSL from the official source"
+          "ru": "Установить WSL из официального источника (запущенные дистрибутивы WSL могут быть остановлены)",
+          "en": "Install WSL from the official source (running WSL distributions may be stopped)"
         },
         "privileged": true,
         "requires_reboot": false,
@@ -85,8 +85,8 @@
         "id": "configure-distro",
         "kind": "configure_distro",
         "title": {
-          "ru": "Включить systemd в дистрибутиве Sprut",
-          "en": "Enable systemd in the Sprut distribution"
+          "ru": "Включить systemd в дистрибутиве Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+          "en": "Enable systemd in the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
         },
         "privileged": false,
         "requires_reboot": false,
@@ -197,7 +197,7 @@
       }
     ],
     "disk_estimate_bytes": 5200004096,
-    "hash": "6537e72120f6cb0ee5b1c9fe44cde3a403ac406efa9dd9942e72f2002d7f10b9"
+    "hash": "bb08533ab47f39ca5d7f91784237635c0a602f03e20947744c63ae75079faa25"
   },
   "expected": "invalid",
   "expected_error": "FLAG_MISMATCH"

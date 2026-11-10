@@ -16,15 +16,17 @@ them by conformance tests in its own CI.
 | `registry/reason-codes.json` | Reason codes: `code`, `description` {ru, en}, `next_action` {ru, en}, `retryable`, `cli_exit_code`, `platforms`, `spec_refs` (spec 8.3, 03-CONTRACTS 7) |
 | `registry/exit-codes.json` | `sprut` CLI exit codes (spec 7.3), the ordered `resolution` rules that choose the exit code, and which reason codes map to them explicitly |
 | `registry/state-machines.json` | State machines: `bootstrap` (CF17), `node_status` (CF42), `wsl_availability` (CW01), generic `task` (long operations). A transition not listed is forbidden. `bootstrap` also has machine-readable guards (`guard_context`, `guard_predicates`, `guards` with `on_reject`, `effects` with their own `checks`) for consent and accepted terms, plan staleness, privilege, local engine endpoint, image allowlist and image presence. `operation_kinds` maps every operation kind to its machine |
-| `registry/plan-step-kinds.json` | Closed vocabulary of InstallationPlan step kinds: platforms, privilege per platform, Windows elevated-helper operation, acknowledgements, licence requirement, required/allowed members, flag rules, official source prefixes, execution preconditions, fixed command templates, title templates; supported Ubuntu releases |
-| `registry/image-allowlist.json` | The bundled image allowlist (`kind: image_allowlist`); empty in 0.2.0, so every image is refused (fail closed) |
+| `registry/plan-step-kinds.json` | Closed vocabulary of InstallationPlan step kinds: platforms, privilege per platform, Windows elevated-helper operation, acknowledgements, licence requirement, required/allowed members, flag rules, official source prefixes and redirect hosts, execution preconditions, fixed command templates, title templates; supported Ubuntu releases |
+| `registry/step-failures.json` | Failure classes of plan steps and of bootstrap checks outside steps (PROBING, ENGINE_CHECK, SMOKE_TEST): reason code, next state and event per class; the classes of every step kind and state per platform |
+| `registry/run-profiles.json` | Container run profiles per image purpose: the hardened options of the diagnostic container; worker and inference are not defined yet |
+| `registry/image-allowlist.json` | The bundled image allowlist (`kind: image_allowlist`); still empty in 0.3.0, so every image is refused (fail closed) |
 | `registry/ownership.json` | Ownership label namespace, labels, charset and rules for Sprut containers, volumes and networks |
 | `schemas/*.schema.json` | JSON Schema (draft 2020-12): the registries above, `operation-event.schema.json` (event of spec 7.1 item 4 / 8.1), `installation-plan.schema.json`, `image-reference.schema.json` (ImageDigest, ImageReference), `wsl-resources.schema.json` and the vector file formats |
 | `proto/sprut/v1/common.proto` | Protobuf package `sprut.v1`: `OperationEvent`. gRPC services follow at S1 |
 | `buf.yaml` | buf lint/breaking configuration for `proto/` |
 | `docs/canonical-json.md` | Canonical JSON (RFC 8785 / JCS, restricted), hash rule (CF03) and the JSON Schema number semantics both clients follow |
-| `docs/installation-plan.md` | InstallationPlan format and rules (CF12, CF13), guard inputs derived from a plan, error categories |
-| `docs/images-and-ownership.md` | ImageDigest / ImageReference, the bundled allowlist, ownership labels, FOREIGN_RESOURCE (CF20–CF23) |
+| `docs/installation-plan.md` | InstallationPlan format and rules (CF12, CF13), guard inputs derived from a plan, error categories, execution preconditions, download and redirect rule, step failures, the elevated helper |
+| `docs/images-and-ownership.md` | ImageDigest / ImageReference, the bundled allowlist, ownership labels, FOREIGN_RESOURCE (CF20–CF23), container run profiles |
 | `docs/wsl-resources.md` | Managed `.wslconfig` keys and the Sprut distribution disk size, rules CR01–CR07 |
 | `test-vectors/canonical-json/` | Canonicalization and `object_hash` vectors |
 | `test-vectors/canonical-json-invalid/` | Inputs that must be rejected before hashing |
@@ -32,6 +34,9 @@ them by conformance tests in its own CI.
 | `test-vectors/guards/` | Guard evaluations: transition + context → allowed, or rejected with a reason code |
 | `test-vectors/effects/` | Effect preconditions: consent is set only when every licence and acknowledgement was given |
 | `test-vectors/step-preconditions/` | Plan step + facts observed before it runs → allowed, or rejected with a reason code and next state |
+| `test-vectors/step-failures/` | Step kind or bootstrap state + failure class → reason code, next state and event, or not applicable; kind of command + how it ended → failure class |
+| `test-vectors/download-redirects/` | Requested URL + redirect targets + response size → download allowed or refused |
+| `test-vectors/run-profiles/` | `docker run` options → conforming to the run profile or not |
 | `test-vectors/operation-events/` | `OperationEvent` instances with the expected producer and consumer verdicts |
 | `test-vectors/exit-codes/` | Inputs (final state, reason code, interactivity) and the expected CLI exit code |
 | `test-vectors/installation-plans/` | Valid plans with the derived guard inputs, and invalid plans with the expected error category |
@@ -74,6 +79,15 @@ are identical; the ownership registry keeps the namespace and the required
 `managed` and `profile` labels. It also recomputes every test vector,
 including guard evaluations with the reference predicates, InstallationPlan
 validation and derived guard inputs, allowlist, ownership and WSL resources.
+From 0.3.0 it also checks: the failure classes of every step kind against its
+command templates and the choice of the class from how a command ended;
+redirect hosts (bare host names, only the reviewed ones) and download limits;
+a drain precondition on every kind that stops the Sprut distribution or stops
+or restarts Docker Engine, the `engine_restart` acknowledgement for the
+latter on Linux, and `--terminate` before `--resize`; the fixed form of
+`apt-get update`; the diagnostic run profile (every hardening option present
+exactly once, closed option set, nothing after the image); and that an
+allowlisted image has a normative run profile with fixed limits.
 
 `--self-test` applies a list of known-bad changes in memory and fails if any is
 not detected. Examples: `PLAN_READY->READY`, `ACTION_REQUIRED->INSTALLING`, an
@@ -90,8 +104,8 @@ Clients add this repository as a git submodule pinned to a release tag:
 
 ```sh
 git submodule add https://github.com/alexindacomp/sprut-contracts.git contracts
-git -C contracts checkout v0.2.0
-git add contracts && git commit -m "Pin sprut-contracts v0.2.0"
+git -C contracts checkout v0.3.0
+git add contracts && git commit -m "Pin sprut-contracts v0.3.0"
 ```
 
 Then, in each implementation:
@@ -103,10 +117,16 @@ Then, in each implementation:
   hash, every state-transition case and sequence, every guard case, every
   exit-code case, every OperationEvent case, every InstallationPlan vector
   (verdict, error category and derived guard inputs), allowlist, ownership and
-  WSL resources case;
+  WSL resources case, every step-precondition, step-failure, download-redirect
+  and run-profile case;
 - embed `registry/image-allowlist.json` at build time as the only allowlist
-  (`docs/images-and-ownership.md`), and read plan step kinds and ownership
-  labels from `registry/plan-step-kinds.json` and `registry/ownership.json`;
+  (`docs/images-and-ownership.md`), and read plan step kinds, ownership
+  labels, failure classes and run profiles from `registry/plan-step-kinds.json`,
+  `registry/ownership.json`, `registry/step-failures.json` and
+  `registry/run-profiles.json`;
+- report a failure of a step or of a bootstrap check only through
+  `registry/step-failures.json` (`docs/installation-plan.md` section 8), never
+  with a reason code that describes another condition;
 - validate against `schemas/` with the number semantics of
   `docs/canonical-json.md` 3.3 (a stock draft 2020-12 validator differs);
 - implement the bootstrap guard predicates exactly as defined in
@@ -185,13 +205,19 @@ exact `plan_id`:
 - Licence terms and the acknowledgements for the docker group and for removing
   the Sprut distribution are accepted separately and never on the user's
   behalf: consent (`set_consented_plan_id`) is set only when all of them were
-  given (`terms_accepted`, `test-vectors/effects/`). In the CLI each needs its
-  own flag (`--accept-license <id>`, `--accept-docker-group`,
-  `--accept-distro-removal`); `--yes` replaces none of them.
+  given (`terms_accepted`, `test-vectors/effects/`). The same holds for the
+  `engine_restart` acknowledgement of `install_nvidia_toolkit` on Linux,
+  where restarting Docker Engine stops every container of the host. In the
+  CLI each needs its own flag (`--accept-license <id>`,
+  `--accept-docker-group`, `--accept-distro-removal`,
+  `--accept-engine-restart`); `--yes` replaces none of them.
 - Right before a step runs, its execution preconditions are checked against
   fresh facts (`test-vectors/step-preconditions/`): for example `restart_wsl`
-  needs a separate confirmation after the drain (CR04), `write_wslconfig` a
-  `.wslconfig` unchanged since the plan.
+  needs a separate confirmation after the drain (CR04), and so do
+  `install_wsl` and `update_wsl` whenever a WSL distribution is registered;
+  `write_wslconfig` needs a `.wslconfig` unchanged since the plan; a step that
+  stops the Sprut distribution needs drained Sprut tasks; `unregister_distro`
+  needs the rootfs of the following import already downloaded and verified.
 - Before INSTALLING, the plan is rebuilt from the current host and its
   `plan_id` must equal the consented one (`PLAN_STALE` otherwise). Only steps of
   that plan carrying the privilege flag may be elevated. IMAGE_PULL requires the
@@ -351,7 +377,17 @@ and result shape on both platforms.
 
 ## Status
 
-`0.2.0` — contract prerequisites for C1 (see `CHANGELOG.md`): InstallationPlan
+`0.3.0` — contract gaps found by the code and security reviews of the Windows
+C1 core (see `CHANGELOG.md`): reason codes and a failure table for step and
+check failures, the WSL_POLICY_BLOCKED probe result, the replacement source
+verified before a distribution is removed, the WSL restart confirmation for
+installing and updating WSL, a drain before the Sprut distribution or Docker
+Engine is stopped, the redirect rule with per-kind hosts and download limits,
+the hardened diagnostic run profile, and the elevated helper requirements.
+The InstallationPlan format is unchanged; six step titles changed, so the
+`plan_id` of a plan that contains one of those steps differs from 0.2.0.
+
+`0.2.0` — contract prerequisites for C1: InstallationPlan
 with the closed step-kind vocabulary, preconditions and command templates,
 ImageDigest / ImageReference, the bundled image allowlist, ownership labels,
 local engine endpoint, WSL resources, FOREIGN_RESOURCE, PLAN_INVALID and
@@ -369,8 +405,42 @@ CODEOWNERS for `registry/`, `schemas/`, `proto/`, `tools/` and `.github/`;
 branch protection on `master` with the `validate` check required; signed
 release tags. Clients pin only signed tags.
 
+An image is allowlisted only for a purpose whose run profile in
+`registry/run-profiles.json` is normative with fixed limits (SEC-15), and a
+diagnostic image only after the diagnostic image protocol (CR-57, below) is
+part of these contracts. `tools/validate.py` fails on an entry whose purpose
+has no such profile.
+
 ## Planned
 
+- **Diagnostic image protocol (CR-57), required before any image digest is
+  pinned.** What the diagnostic container does for CF16 and how the client
+  reads the result: the compute check, writing and reading persistent state
+  (the state volume and its mount), logs, stop behaviour, exit statuses and
+  time limits; together with it the limit values and any further option of the
+  `diagnostic` run profile: the state volume mount, `--user`, `--memory-swap`
+  and `--cpus`, and what `Config` may carry besides `Image` and `Labels`.
+  Until this contract exists the allowlist stays empty and READY cannot be
+  reached with a real image.
+- **Profile lock (CF04), a client requirement now.** PROFILE_LOCKED must be
+  backed by a cross-process lock on the profile, not by a flag inside one
+  process: a second Sprut Desktop, a `sprut` command next to a running
+  service, or any other process of the same profile gets PROFILE_LOCKED (exit
+  code 8) instead of a second installation, pull or task. Both clients
+  implement it; the shared part (lock location and scope, stale-lock
+  handling) is planned with the ClientProfile contract.
+- **S−1 checks recorded in these contracts** (provisional values and
+  assumptions to confirm on real hosts): which distributions
+  `wsl --update` and the WSL package stop, including those of another
+  signed-in user on a multi-user computer; `APT::Update::Error-Mode=any` on
+  jammy; the redirect hosts and download limits (`redirect_hosts`,
+  `download`), including what `timeout_seconds` means (a stall timeout with
+  a generous total, or resume); the source prefixes and supported Ubuntu releases; whether a
+  configuration reload can replace `systemctl restart docker.service` in
+  `install_nvidia_toolkit`.
+- **Pinned artifact size in the plan.** Today an exact size, where the build
+  pins one, is a client constant next to the SHA-256; showing it in
+  `source` would be a new plan member and needs a new `schema_version`.
 - **C1: BootstrapJournal and diagnostics contract.** Journal record format
   (`kind`, `schema_version`, hashed with `object_hash`), the rule that
   journal content is never used to continue execution without a probe, and the

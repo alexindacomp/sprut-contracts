@@ -1,0 +1,61 @@
+{
+  "name": "linux-nvidia-toolkit",
+  "description": "Linux: install_nvidia_toolkit restarts the Docker Engine of the host, which stops every container on it. The step carries the Linux title that says so and requires the separate engine_restart acknowledgement (CR-72).",
+  "document": {
+    "kind": "installation_plan",
+    "schema_version": 1,
+    "platform": "linux",
+    "current_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "nvidia_toolkit": "absent",
+      "worker_image": "present"
+    },
+    "target_state": {
+      "docker_engine": "running",
+      "docker_group": "member",
+      "nvidia_toolkit": "installed",
+      "worker_image": "present"
+    },
+    "steps": [
+      {
+        "id": "install-nvidia-toolkit",
+        "kind": "install_nvidia_toolkit",
+        "title": {
+          "ru": "Установить NVIDIA Container Toolkit (Docker Engine будет перезапущен: все контейнеры на этом компьютере будут остановлены)",
+          "en": "Install the NVIDIA Container Toolkit (Docker Engine is restarted: all containers on this computer are stopped)"
+        },
+        "privileged": true,
+        "requires_reboot": false,
+        "requires_relogin": false,
+        "requires_wsl_restart": false,
+        "estimated_bytes": 120000000,
+        "source": {
+          "url": "https://nvidia.github.io/libnvidia-container/gpgkey",
+          "sha256": "c880576d6cf75a48e5027a871bac70fd0421ab07d2b55f30877b21f1c87959c9"
+        }
+      }
+    ],
+    "images": [
+      "ghcr.io/alexindacomp/sprut-worker@sha256:61691fa265f5c46b5084d70cd89bd321f7b45fa31055a944b3bf698806615e22"
+    ],
+    "licences": [],
+    "docker_access": "docker_group",
+    "disk_estimate_bytes": 120000000,
+    "hash": "00b7e334ed0cdeb7df59e647ee68df949dcf22a384d137b218bb12592aa4da98"
+  },
+  "expected": "valid",
+  "derived": {
+    "plan_id": "00b7e334ed0cdeb7df59e647ee68df949dcf22a384d137b218bb12592aa4da98",
+    "plan_action_count": 1,
+    "consented_image_references": [],
+    "privileged_step_ids": [
+      "install-nvidia-toolkit"
+    ],
+    "windows_elevated_steps": [],
+    "required_licence_ids": [],
+    "required_acknowledgements": [
+      "engine_restart"
+    ]
+  }
+}

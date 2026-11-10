@@ -28,7 +28,10 @@ In an InstallationPlan, `write_wslconfig` carries the `wsl2` values as
 `wslconfig`, plus `wslconfig_file` (the SHA-256 of the current file, or
 `absent`, and the current text of the managed keys it overwrites), and
 `resize_distro_disk` carries `distro_disk_size`; all are hashed and consented
-with the plan. A current value is shown as text; if it cannot be represented
+with the plan. `resize_distro_disk` stops the Sprut distribution
+(`wsl --terminate`) before `wsl --manage ... --resize`, and only after a drain
+of Sprut tasks (precondition `sprut_drained`; otherwise DRAIN_TIMEOUT,
+ACTION_REQUIRED) (CR-49). A current value is shown as text; if it cannot be represented
 (control or invisible characters, more than 256 code points) the probe reports
 WSL_CONFIG_CONFLICT naming that key, no plan is built and the operation is
 ACTION_REQUIRED until the user fixes the file (CR-29; vectors
@@ -55,7 +58,13 @@ again.
    confirmation given right before it, in a dialog that lists the running WSL
    distributions (precondition `wsl_restart_confirmed`); plan consent alone
    never restarts WSL. Without it the state is WSL_RESTART_REQUIRED
-   (ACTION_REQUIRED).
+   (ACTION_REQUIRED). The dialog must show the list that was actually read:
+   if the running distributions cannot be read, no dialog is shown and WSL is
+   not restarted (fail closed, the same state). `install_wsl` and
+   `update_wsl` can stop all distributions too and need the same confirmation
+   whenever a distribution is registered (`docs/installation-plan.md`
+   section 4, SEC-5). The titles of these steps, of `resize_distro_disk` and
+   of `configure_distro` say what is stopped (CR-80).
 5. **Verify** (CR05). After the restart the effective memory and CPU count are
    read inside the Sprut distribution and used as the budget (CF24); a
    difference from the configured values is a warning with a reason.

@@ -154,12 +154,12 @@
     {
       "code": "WSL_DISTRO_BROKEN",
       "description": {
-        "ru": "WSL-дистрибутив Sprut повреждён или не той версии.",
-        "en": "The Sprut WSL distribution is damaged or has the wrong version."
+        "ru": "WSL-дистрибутив Sprut зарегистрирован, но есть положительное свидетельство того, что он непригоден. Свидетельством считается только: версия в регистрации не равна 2; файл VHDX дистрибутива отсутствует (оба факта берутся из регистрации и файловой системы, а не из команды); либо проверка внутри дистрибутива завершилась с кодом 0 и вернула полный, правильно оформленный вывод, который не является ожидаемым ответом. Любой другой результат проверки (ненулевой код, код вне 0–255, таймаут, неполный вывод) — это WSL_COMMAND_FAILED, а не этот код.",
+        "en": "The Sprut WSL distribution is registered, but there is positive evidence that it is unusable. Only this counts as evidence: the registered WSL version is not 2; the VHDX file of the distribution is missing (both facts come from the registration and the file system, not from a command); or a probe inside the distribution exited with status 0 and returned complete, well-formed output that is not the expected answer. Any other probe result (a non-zero status, a status outside 0-255, a timeout, incomplete output) is WSL_COMMAND_FAILED, never this code."
       },
       "next_action": {
-        "ru": "Согласуйте пересоздание дистрибутива Sprut; план покажет, какие данные будут потеряны.",
-        "en": "Approve re-creating the Sprut distribution; the plan shows which data will be lost."
+        "ru": "Согласуйте пересоздание дистрибутива Sprut; план покажет, какие данные будут потеряны. Дистрибутив удаляется только по этому плану и только после того, как образ для замены загружен и проверен.",
+        "en": "Approve re-creating the Sprut distribution; the plan shows which data will be lost. The distribution is removed only by that plan, and only after the replacement image has been downloaded and verified."
       },
       "retryable": false,
       "cli_exit_code": 1,
@@ -169,17 +169,17 @@
     {
       "code": "WSL_RESTART_REQUIRED",
       "description": {
-        "ru": "Новые настройки WSL вступят в силу после перезапуска WSL.",
-        "en": "New WSL settings take effect after WSL is restarted."
+        "ru": "Шаг, который останавливает все дистрибутивы WSL, ждёт отдельного подтверждения: перезапуск WSL, после которого вступают в силу новые настройки WSL, либо установка или обновление WSL.",
+        "en": "A step that stops all WSL distributions is waiting for a separate confirmation: the WSL restart that applies new WSL settings, or installing or updating WSL."
       },
       "next_action": {
-        "ru": "Подтвердите перезапуск WSL. Он остановит все дистрибутивы WSL; при активных задачах Sprut сначала выполнит drain.",
-        "en": "Confirm the WSL restart. It stops all WSL distributions; with active tasks Sprut drains them first."
+        "ru": "Подтвердите действие в диалоге со списком дистрибутивов WSL. Оно остановит все дистрибутивы WSL; при активных задачах Sprut сначала выполнит drain. Если список дистрибутивов прочитать не удалось, повторите проверку.",
+        "en": "Confirm the action in the dialog that lists the WSL distributions. It stops all WSL distributions; with active tasks Sprut drains them first. If the list of distributions could not be read, run the check again."
       },
       "retryable": false,
       "cli_exit_code": 1,
       "platforms": ["windows"],
-      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CR04"]
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CR04", "CW03"]
     },
     {
       "code": "WSL_CONFIG_CONFLICT",
@@ -233,8 +233,8 @@
         "en": "The official source of the installer, package or image is unavailable."
       },
       "next_action": {
-        "ru": "Проверьте подключение к сети и повторите.",
-        "en": "Check the network connection and try again."
+        "ru": "Проверьте подключение к сети и повторите. На Linux также проверьте, что доступны все настроенные источники apt: Sprut не изменяет и не отключает чужие источники.",
+        "en": "Check the network connection and try again. On Linux also check that every configured apt source is reachable: Sprut never changes or disables sources it did not add."
       },
       "retryable": true,
       "cli_exit_code": 1,
@@ -559,8 +559,8 @@
     {
       "code": "DRAIN_TIMEOUT",
       "description": {
-        "ru": "Задачи не завершились за время, отведённое на drain; узел остаётся в DRAINING.",
-        "en": "Tasks did not finish within the drain timeout; the node stays in DRAINING."
+        "ru": "Задачи не завершились за время, отведённое на drain; узел остаётся в DRAINING, а шаг плана, который остановил бы дистрибутив Sprut, не выполняется.",
+        "en": "Tasks did not finish within the drain timeout; the node stays in DRAINING, and a plan step that would stop the Sprut distribution is not run."
       },
       "next_action": {
         "ru": "Повторите drain с большим таймаутом или остановите задачи явно.",
@@ -569,7 +569,7 @@
       "retryable": true,
       "cli_exit_code": 1,
       "platforms": ["windows", "linux"],
-      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF43"]
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 8.3", "CF43", "sprut-contracts docs/installation-plan.md"]
     },
     {
       "code": "AUTH_REJECTED",
@@ -795,6 +795,156 @@
       "cli_exit_code": 1,
       "platforms": ["windows", "linux"],
       "spec_refs": ["CF12", "CF13", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "STEP_FAILED",
+      "description": {
+        "ru": "Команда или действие шага плана не выполнились, и более точного кода причины для этого сбоя нет: программа завершилась с ненулевым кодом возврата, действие клиента не удалось либо (на Linux) программа не запустилась или не уложилась в отведённое время. Шаг не выполнен.",
+        "en": "A command or action of a plan step failed and no more specific reason code applies: a program exited with a non-zero status, a client action failed, or (on Linux) a program could not be started or did not finish in time. The step did not complete."
+      },
+      "next_action": {
+        "ru": "Повторите подготовку окружения: она начнётся с новой проверки состояния. Если ошибка повторяется, выгрузите диагностику и сообщите о проблеме.",
+        "en": "Run environment setup again; it starts with a new check of the host. If the error repeats, export diagnostics and report the problem."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF02", "CF13", "CF17", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "WSL_COMMAND_FAILED",
+      "description": {
+        "ru": "Не удалось выполнить wsl.exe или команду внутри дистрибутива Sprut: процесс, запущенный через wsl.exe, не запустился, не завершился за отведённое время или завершился с кодом возврата вне 0–255 (ошибка самого wsl.exe, например -1); либо проверка внутри дистрибутива не дала полного ответа (ненулевой код или неполный вывод). Это не свидетельство повреждения дистрибутива: он не считается повреждённым (WSL_DISTRO_BROKEN) и из-за этого не удаляется.",
+        "en": "wsl.exe or a command inside the Sprut distribution could not be run: a process started through wsl.exe did not start, did not finish in time or ended with an exit status outside 0-255 (an error of wsl.exe itself, for example -1); or a probe inside the distribution gave no complete answer (a non-zero status or incomplete output). This is not evidence of a damaged distribution: it is not treated as broken (WSL_DISTRO_BROKEN) and is never removed because of it."
+      },
+      "next_action": {
+        "ru": "Повторите проверку. Если ошибка повторяется, перезапустите WSL или компьютер сами, затем выгрузите диагностику.",
+        "en": "Run the check again. If the error repeats, restart WSL or the computer yourself, then export diagnostics."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["CF10", "CW01", "CW04", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "ENGINE_COMMAND_FAILED",
+      "description": {
+        "ru": "Команда Docker Engine (запрос к API или вызов docker) не выполнилась, не завершилась за отведённое время или вернула ошибку без более точной причины. Это не означает, что daemon остановлен (ENGINE_DAEMON_STOPPED).",
+        "en": "A Docker Engine command (an API request or a docker call) could not be run, did not finish in time or failed without a more specific reason. It does not mean that the daemon is stopped (ENGINE_DAEMON_STOPPED)."
+      },
+      "next_action": {
+        "ru": "Повторите операцию. Если ошибка повторяется, проверьте состояние Docker Engine и выгрузите диагностику.",
+        "en": "Try the operation again. If the error repeats, check the state of Docker Engine and export diagnostics."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF10", "CF16", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "ELEVATED_STEP_FAILED",
+      "description": {
+        "ru": "Помощник с правами администратора запустился, но шаг плана завершился с ошибкой. Это не отсутствие прав (PRIVILEGE_REQUIRED) и не отказ пользователя (CANCELLED).",
+        "en": "The elevated helper ran, but the plan step failed. This is neither missing privileges (PRIVILEGE_REQUIRED) nor a decline by the user (CANCELLED)."
+      },
+      "next_action": {
+        "ru": "Повторите подготовку окружения: она начнётся с новой проверки состояния. Если ошибка повторяется, выгрузите диагностику и сообщите о проблеме.",
+        "en": "Run environment setup again; it starts with a new check of the host. If the error repeats, export diagnostics and report the problem."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["CW03", "SPRUT-CLIENT-SPECIFICATION 4.3", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "ELEVATION_UNAVAILABLE",
+      "description": {
+        "ru": "Помощник с правами администратора недоступен: его нет в установке Sprut или его не удаётся запустить. Шаг не выполнялся, запрос прав не показывался.",
+        "en": "The elevated helper is unavailable: it is missing from the Sprut installation or cannot be started. The step was not run and no privilege request was shown."
+      },
+      "next_action": {
+        "ru": "Восстановите или переустановите Sprut Desktop из официального установщика, затем повторите подготовку окружения.",
+        "en": "Repair or reinstall Sprut Desktop from the official installer, then run environment setup again."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows"],
+      "spec_refs": ["CW03", "SPRUT-CLIENT-SPECIFICATION 4.3", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "SECRET_STORE_FAILED",
+      "description": {
+        "ru": "Защищённое хранилище секретов ОС не смогло сохранить, прочитать или удалить секрет (Windows: защищённое хранилище ОС; Linux: файл с правами 0600). Значение секрета не попадает в журнал и диагностику.",
+        "en": "The OS secret storage failed to store, read or delete a secret (Windows: the protected OS storage; Linux: a file with mode 0600). The secret value is never written to logs or diagnostics."
+      },
+      "next_action": {
+        "ru": "Повторите операцию. Если ошибка повторяется, проверьте доступ к профилю пользователя и каталогу состояния Sprut и выгрузите диагностику.",
+        "en": "Try the operation again. If the error repeats, check access to the user profile and the Sprut state directory and export diagnostics."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 9 item 5", "CF02"]
+    },
+    {
+      "code": "PACKAGE_INSTALL_FAILED",
+      "description": {
+        "ru": "Команда apt-get install завершилась с ошибкой в дистрибутиве Sprut или на Linux-хосте: пакеты не удалось загрузить или установить. Индекс репозитория при этом был получен (иначе это SOURCE_UNAVAILABLE).",
+        "en": "apt-get install failed inside the Sprut distribution or on the Linux host: packages could not be downloaded or installed. The repository index had been fetched (otherwise it is SOURCE_UNAVAILABLE)."
+      },
+      "next_action": {
+        "ru": "Проверьте подключение к сети и состояние пакетов (незавершённая установка, конфликтующие пакеты, блокировка dpkg), затем повторите подготовку окружения. Sprut не удаляет и не заменяет конфликтующие пакеты сам. Если ошибка повторяется, выгрузите диагностику.",
+        "en": "Check the network connection and the package state (an unfinished installation, conflicting packages, a dpkg lock), then run environment setup again. Sprut never removes or replaces conflicting packages by itself. If the error repeats, export diagnostics."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["SPRUT-CLIENT-SPECIFICATION 7.4", "CW05", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "PROBE_FAILED",
+      "description": {
+        "ru": "Проверку состояния хоста не удалось выполнить: команда проверки или запрос к системе не выполнились, не уложились в отведённое время либо вернули неполный ответ. Это не свидетельство о состоянии хоста; план по такой проверке не строится.",
+        "en": "A check of the host state could not be performed: a probe command or a system query did not run, did not finish in time or returned an incomplete answer. This is not evidence about the host; no plan is built from such a check."
+      },
+      "next_action": {
+        "ru": "Повторите проверку. Если ошибка повторяется, выгрузите диагностику и сообщите о проблеме.",
+        "en": "Run the check again. If the error repeats, export diagnostics and report the problem."
+      },
+      "retryable": true,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF10", "CF15", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "LOCAL_STORAGE_FAILED",
+      "description": {
+        "ru": "Клиент не смог записать собственные файлы (загруженный файл в каталоге загрузок, копию rootfs, проверенную копию): отказано в доступе или ошибка ввода-вывода. Если система сообщила, что на диске закончилось место, это INSUFFICIENT_DISK, а не этот код.",
+        "en": "The client could not write its own files (the staged download, the rootfs copy, a verified copy): access was denied or an I/O error occurred. When the system reported that the disk is full it is INSUFFICIENT_DISK, not this code."
+      },
+      "next_action": {
+        "ru": "Проверьте права доступа к каталогу данных Sprut и состояние диска, затем повторите подготовку окружения. Если ошибка повторяется, выгрузите диагностику.",
+        "en": "Check the access rights of the Sprut data directory and the health of the disk, then run environment setup again. If the error repeats, export diagnostics."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CF02", "CF12", "SPRUT-CLIENT-SPECIFICATION 8.2", "sprut-contracts docs/installation-plan.md"]
+    },
+    {
+      "code": "ENGINE_DOCKER_DESKTOP",
+      "description": {
+        "ru": "Docker Engine, доступный клиенту, сообщает о себе как Docker Desktop (на Windows — в дистрибутиве Sprut включена интеграция Docker Desktop с WSL). Sprut такой engine не использует и ничего в нём не изменяет.",
+        "en": "The Docker Engine the client reaches identifies itself as Docker Desktop (on Windows: the Docker Desktop WSL integration is enabled for the Sprut distribution). Sprut does not use such an engine and changes nothing in it."
+      },
+      "next_action": {
+        "ru": "На Windows отключите интеграцию Docker Desktop с WSL для дистрибутива Sprut (Docker Desktop: Settings, Resources, WSL integration) и повторите проверку. На Linux используйте Docker Engine, а не Docker Desktop. Sprut не изменяет настройки Docker Desktop за вас.",
+        "en": "On Windows disable the Docker Desktop WSL integration for the Sprut distribution (Docker Desktop: Settings, Resources, WSL integration) and run the check again. On Linux use Docker Engine, not Docker Desktop. Sprut does not change Docker Desktop settings for you."
+      },
+      "retryable": false,
+      "cli_exit_code": 1,
+      "platforms": ["windows", "linux"],
+      "spec_refs": ["CW06", "CF11", "CF14", "sprut-contracts docs/images-and-ownership.md"]
     }
   ]
 }

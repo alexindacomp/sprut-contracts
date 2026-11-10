@@ -22,8 +22,8 @@
         "id": "update-wsl",
         "kind": "update_wsl",
         "title": {
-          "ru": "Обновить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш)",
-          "en": "Update WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash)"
+          "ru": "Обновить WSL средствами wsl.exe (загрузку выполняет wsl.exe, Sprut не проверяет её хеш; запущенные дистрибутивы WSL могут быть остановлены)",
+          "en": "Update WSL with wsl.exe (wsl.exe downloads it; Sprut does not verify its hash; running WSL distributions may be stopped)"
         },
         "privileged": true,
         "requires_reboot": true,
@@ -35,11 +35,11 @@
     "images": [],
     "licences": [],
     "disk_estimate_bytes": 0,
-    "hash": "1eff8544287e96cbee8229130bcffa130f3ee80ac6cb80caa3d5dd6b68365cee"
+    "hash": "664e33148674211bc58b97955915eac37c910954a1e99a4b8ab233f60df75f57"
   },
   "expected": "valid",
   "derived": {
-    "plan_id": "1eff8544287e96cbee8229130bcffa130f3ee80ac6cb80caa3d5dd6b68365cee",
+    "plan_id": "664e33148674211bc58b97955915eac37c910954a1e99a4b8ab233f60df75f57",
     "plan_action_count": 1,
     "consented_image_references": [],
     "privileged_step_ids": [

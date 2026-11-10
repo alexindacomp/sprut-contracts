@@ -57,8 +57,8 @@
         "id": "configure-distro",
         "kind": "configure_distro",
         "title": {
-          "ru": "Включить systemd в дистрибутиве Sprut",
-          "en": "Enable systemd in the Sprut distribution"
+          "ru": "Включить systemd в дистрибутиве Sprut (дистрибутив Sprut будет остановлен; его задачи сначала завершаются)",
+          "en": "Enable systemd in the Sprut distribution (the Sprut distribution is stopped; its tasks are drained first)"
         },
         "privileged": false,
         "requires_reboot": false,
@@ -76,7 +76,7 @@
       }
     ],
     "disk_estimate_bytes": 1500000000,
-    "hash": "454bdfbe1d96ba4297957dbab98006cef3e87255908baadedf4d73bf91c296e7"
+    "hash": "4825ff2fddcb104207106c296c23adcdd56a1609a373d7cfa2112f3233e3f41f"
   },
   "expected": "invalid",
   "expected_error": "LICENCE_MISSING"
